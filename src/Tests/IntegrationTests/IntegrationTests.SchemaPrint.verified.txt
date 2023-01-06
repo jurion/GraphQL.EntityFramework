@@ -57,14 +57,14 @@ type CustomType {
   property: Long!
 }
 
-scalar Decimal
-
 type DateEntity {
   id: ID!
   property: DateOnly
 }
 
 scalar DateOnly
+
+scalar Decimal
 
 type Derived implements Interface {
   childrenFromInterface(after: String, first: Int, before: String, last: Int, where: [WhereExpression!], orderBy: [OrderBy!], ids: [ID!]): DerivedChildConnection!
