@@ -1,4 +1,4 @@
-﻿static class ConnectionConverter
+static class ConnectionConverter
 {
     public static Connection<T> ApplyConnectionContext<T>(List<T> list, int? first, string? afterString, int? last, string? beforeString)
         where T : class
@@ -63,7 +63,7 @@
         var page = list.Skip(skip).Take(take).ToList();
         if (reverse)
         {
-           page.Reverse();
+            page.Reverse();
         }
         return Build(skip, take, count, page);
     }
@@ -94,14 +94,15 @@
         CancellationToken cancellation = default)
         where TItem : class
     {
-        var count = await list.CountAsync(cancellation);
+        var shouldCount = (context?.SubFields?.Any(x => x.Key.ToLower() == "totalcount") ?? false) || (context?.SubFields?.Any(x => x.Key.ToLower() == "pageinfo") ?? false);
+        var count = shouldCount ? await list.CountAsync(cancellation) : 0;
         cancellation.ThrowIfCancellationRequested();
         if (last is null)
         {
-            return await First(list, first.GetValueOrDefault(0), after, before, count, context, filters, cancellation);
+            return await First(list, first.GetValueOrDefault(0), after, before, count, context!, filters, cancellation);
         }
 
-        return await Last(list, last.Value, after, before, count, context, filters, cancellation);
+        return await Last(list, last.Value, after, before, count, context!, filters, cancellation);
     }
 
     static Task<Connection<TItem>> First<TSource, TItem>(
