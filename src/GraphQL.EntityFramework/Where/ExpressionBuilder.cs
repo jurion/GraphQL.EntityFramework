@@ -1,4 +1,6 @@
-﻿namespace GraphQL.EntityFramework;
+using GraphQL.EntityFramework.Interfaces;
+
+namespace GraphQL.EntityFramework;
 
 public static class ExpressionBuilder<T>
 {
@@ -7,15 +9,16 @@ public static class ExpressionBuilder<T>
     /// <summary>
     /// Build a predicate for a supplied list of where's (Grouped or not)
     /// </summary>
-    public static Expression<Func<T, bool>> BuildPredicate(IEnumerable<WhereExpression> wheres)
+    public static Expression<Func<T, bool>> BuildPredicate(IEnumerable<WhereExpression> wheres, ICustomExpressionBuilder<T>? customExpressionBuilder = null, IResolveFieldContext? context = null)
     {
-        var expressionBody = MakePredicateBody(wheres);
         var param = PropertyCache<T>.SourceParameter;
+        var expressionBody = MakePredicateBody(wheres, customExpressionBuilder, param, context);
+        
 
         return Expression.Lambda<Func<T, bool>>(expressionBody, param);
     }
 
-    static Expression MakePredicateBody(IEnumerable<WhereExpression> wheres)
+    static Expression MakePredicateBody(IEnumerable<WhereExpression> wheres, ICustomExpressionBuilder<T>? customExpressionBuilder, ParameterExpression parameterExpression, IResolveFieldContext? resolveFieldContext)
     {
         Expression? mainExpression = null;
         var previousWhere = new WhereExpression();
@@ -24,25 +27,34 @@ public static class ExpressionBuilder<T>
         foreach (var where in wheres)
         {
             Expression nextExpression;
-
-            // If there are grouped expressions
-            if (where.GroupedExpressions?.Length > 0)
+            Expression? customExpression = null;
+            if (customExpressionBuilder != null)
+                customExpression = customExpressionBuilder.GetExpression(where, parameterExpression, resolveFieldContext);
+            if (customExpression == null)
             {
-                // Recurse with new set of expression
-                nextExpression = MakePredicateBody(where.GroupedExpressions);
-
-                // If the whole group is to be negated
-                if (where.Negate)
+                // If there are grouped expressions
+                if (where.GroupedExpressions?.Length > 0)
                 {
-                    // Negate it
-                    nextExpression = NegateExpression(nextExpression);
+                    // Recurse with new set of expression
+                    nextExpression = MakePredicateBody(where.GroupedExpressions, customExpressionBuilder, parameterExpression, resolveFieldContext);
+
+                    // If the whole group is to be negated
+                    if (where.Negate)
+                    {
+                        // Negate it
+                        nextExpression = NegateExpression(nextExpression);
+                    }
+                }
+                // Otherwise handle single expressions
+                else
+                {
+                    // Get the predicate body for the single expression
+                    nextExpression = MakePredicateBody(where.Path, where.Comparison, where.Value, where.Negate, where.Case);
                 }
             }
-            // Otherwise handle single expressions
             else
             {
-                // Get the predicate body for the single expression
-                nextExpression = MakePredicateBody(where.Path, where.Comparison, where.Value, where.Negate, where.Case);
+                nextExpression = customExpression;
             }
 
             // If this is the first where processed
@@ -115,7 +127,7 @@ public static class ExpressionBuilder<T>
         var listItemType = property.PropertyType.GetGenericArguments().Single();
 
         // Generate the predicate for the list item type
-        var subPredicate = (Expression) typeof(ExpressionBuilder<>)
+        var subPredicate = (Expression)typeof(ExpressionBuilder<>)
             .MakeGenericType(listItemType)
             .GetMethods(BindingFlags.Public | BindingFlags.Static)
             .Single(m => m.Name == "BuildPredicate" && m.GetParameters().Length == 5)

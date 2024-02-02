@@ -1,3 +1,5 @@
+using GraphQL.EntityFramework.Interfaces;
+
 namespace GraphQL.EntityFramework;
 
 public static partial class ArgumentProcessor
@@ -19,9 +21,10 @@ public static partial class ArgumentProcessor
             }
         }
 
+        var customWhereService = context.RequestServices?.GetService<ICustomExpressionBuilder<TItem>>();
         if (ArgumentReader.TryReadWhere(context, out var wheres))
         {
-            var predicate = ExpressionBuilder<TItem>.BuildPredicate(wheres);
+            var predicate = ExpressionBuilder<TItem>.BuildPredicate(wheres, customWhereService, context);
             queryable = queryable.Where(predicate);
         }
 
