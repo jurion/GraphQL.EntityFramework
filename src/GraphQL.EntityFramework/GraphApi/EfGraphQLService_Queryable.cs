@@ -6,11 +6,25 @@ partial class EfGraphQLService<TDbContext>
     public FieldBuilder<object, TReturn> AddQueryField<TReturn>(
         IComplexGraphType graph,
         string name,
-        Func<ResolveEfFieldContext<TDbContext, object>, IQueryable<TReturn>>? resolve = null,
-        Type? graphType = null)
+        Func<ResolveEfFieldContext<TDbContext, object>, IQueryable<TReturn>?>? resolve = null,
+        Type? graphType = null,
+        bool omitQueryArguments = false)
         where TReturn : class
     {
-        var field = BuildQueryField(graphType, name, resolve);
+        var field = BuildQueryField(graphType, name, resolve, omitQueryArguments);
+        graph.AddField(field);
+        return new FieldBuilderEx<object, TReturn>(field);
+    }
+
+    public FieldBuilder<object, TReturn> AddQueryField<TReturn>(
+        IComplexGraphType graph,
+        string name,
+        Func<ResolveEfFieldContext<TDbContext, object>, Task<IQueryable<TReturn>?>?>? resolve = null,
+        Type? graphType = null,
+        bool omitQueryArguments = false)
+        where TReturn : class
+    {
+        var field = BuildQueryField(graphType, name, resolve, omitQueryArguments);
         graph.AddField(field);
         return new FieldBuilderEx<object, TReturn>(field);
     }
@@ -18,11 +32,25 @@ partial class EfGraphQLService<TDbContext>
     public FieldBuilder<TSource, TReturn> AddQueryField<TSource, TReturn>(
         IComplexGraphType graph,
         string name,
-        Func<ResolveEfFieldContext<TDbContext, TSource>, IQueryable<TReturn>>? resolve = null,
-        Type? itemGraphType = null)
+        Func<ResolveEfFieldContext<TDbContext, TSource>, IQueryable<TReturn>?>? resolve = null,
+        Type? itemGraphType = null,
+        bool omitQueryArguments = false)
         where TReturn : class
     {
-        var field = BuildQueryField(itemGraphType, name, resolve);
+        var field = BuildQueryField(itemGraphType, name, resolve, omitQueryArguments);
+        graph.AddField(field);
+        return new FieldBuilderEx<TSource, TReturn>(field);
+    }
+
+    public FieldBuilder<TSource, TReturn> AddQueryField<TSource, TReturn>(
+        IComplexGraphType graph,
+        string name,
+        Func<ResolveEfFieldContext<TDbContext, TSource>, Task<IQueryable<TReturn>?>?>? resolve = null,
+        Type? itemGraphType = null,
+        bool omitQueryArguments = false)
+        where TReturn : class
+    {
+        var field = BuildQueryField(itemGraphType, name, resolve, omitQueryArguments);
         graph.AddField(field);
         return new FieldBuilderEx<TSource, TReturn>(field);
     }
@@ -30,7 +58,20 @@ partial class EfGraphQLService<TDbContext>
     FieldType BuildQueryField<TSource, TReturn>(
         Type? itemGraphType,
         string name,
-        Func<ResolveEfFieldContext<TDbContext, TSource>, IQueryable<TReturn>>? resolve)
+        Func<ResolveEfFieldContext<TDbContext, TSource>, IQueryable<TReturn>?>? resolve,
+        bool omitQueryArguments)
+        where TReturn : class =>
+        BuildQueryField<TSource, TReturn>(
+            itemGraphType,
+            name,
+            resolve == null ? null : context => Task.FromResult(resolve(context)),
+            omitQueryArguments);
+
+    FieldType BuildQueryField<TSource, TReturn>(
+        Type? itemGraphType,
+        string name,
+        Func<ResolveEfFieldContext<TDbContext, TSource>, Task<IQueryable<TReturn>?>?>? resolve,
+        bool omitQueryArguments)
         where TReturn : class
     {
         Guard.AgainstWhiteSpace(nameof(name), name);
@@ -40,39 +81,85 @@ partial class EfGraphQLService<TDbContext>
         {
             Name = name,
             Type = MakeListGraphType<TReturn>(itemGraphType),
-            Arguments = ArgumentAppender.GetQueryArguments(hasId, true),
+            Arguments = ArgumentAppender.GetQueryArguments(hasId, true, false, omitQueryArguments),
         };
 
+        var names = GetKeyNames<TReturn>();
         if (resolve is not null)
         {
             fieldType.Resolver = new FuncFieldResolver<TSource, IEnumerable<TReturn>>(
                 async context =>
                 {
                     var fieldContext = BuildContext(context);
-                    var names = GetKeyNames<TReturn>();
-                    var query = resolve(fieldContext);
+
+                    var task = resolve(fieldContext);
+                    if (task == null)
+                    {
+                        return [];
+                    }
+
+                    var query = await task;
+                    if (query == null)
+                    {
+                        return [];
+                    }
+
                     if (disableTracking)
                     {
                         query = query.AsNoTracking();
                     }
 
                     query = includeAppender.AddIncludes(query, context);
-                    query = query.ApplyGraphQlArguments(context, names, true);
+                    if (!omitQueryArguments)
+                    {
+                        query = query.ApplyGraphQlArguments(context, names, true, omitQueryArguments);
+                    }
 
                     QueryLogger.Write(query);
 
                     List<TReturn> list;
-                    if (disableAsync)
+
+                    try
                     {
-                        list = query.ToList();
+                        if (query.Provider is IAsyncQueryProvider)
+                        {
+                            list = await query.ToListAsync(context.CancellationToken);
+                        }
+                        else
+                        {
+                            list = query.ToList();
+                        }
                     }
-                    else
+                    catch (TaskCanceledException)
                     {
-                        list = await query
-                            .ToListAsync(context.CancellationToken);
+                        throw;
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        throw;
+                    }
+                    catch (Exception exception)
+                    {
+                        throw new(
+                            $"""
+                             Failed to execute query for field `{name}`
+                             GraphType: {fieldType.Type.FullName}
+                             TSource: {typeof(TSource).FullName}
+                             TReturn: {typeof(TReturn).FullName}
+                             DisableTracking: {disableTracking}
+                             HasId: {hasId}
+                             KeyNames: {JoinKeys(names)}
+                             Query: {query.ToQueryString()}
+                             """,
+                            exception);
                     }
 
-                    return await fieldContext.Filters.ApplyFilter(list, context.UserContext, context.User);
+                    if (fieldContext.Filters == null)
+                    {
+                        return list;
+                    }
+
+                    return await fieldContext.Filters.ApplyFilter(list, context.UserContext, fieldContext.DbContext, context.User);
                 });
         }
 

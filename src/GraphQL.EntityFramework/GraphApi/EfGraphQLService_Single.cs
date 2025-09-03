@@ -6,13 +6,31 @@ partial class EfGraphQLService<TDbContext>
     public FieldBuilder<object, TReturn> AddSingleField<TReturn>(
         IObjectGraphType graph,
         string name,
-        Func<ResolveEfFieldContext<TDbContext, object>, IQueryable<TReturn>> resolve,
+        Func<ResolveEfFieldContext<TDbContext, object>, IQueryable<TReturn>?> resolve,
         Func<ResolveEfFieldContext<TDbContext, object>, TReturn, Task>? mutate = null,
         Type? graphType = null,
-        bool nullable = false)
+        bool nullable = false,
+        bool omitQueryArguments = false,
+        bool idOnly = false)
         where TReturn : class
     {
-        var field = BuildSingleField(name, resolve, mutate, graphType, nullable);
+        var field = BuildSingleField(name, resolve, mutate, graphType, nullable, omitQueryArguments, idOnly);
+        graph.AddField(field);
+        return new FieldBuilderEx<object, TReturn>(field);
+    }
+
+    public FieldBuilder<object, TReturn> AddSingleField<TReturn>(
+        IObjectGraphType graph,
+        string name,
+        Func<ResolveEfFieldContext<TDbContext, object>, Task<IQueryable<TReturn>?>?> resolve,
+        Func<ResolveEfFieldContext<TDbContext, object>, TReturn, Task>? mutate = null,
+        Type? graphType = null,
+        bool nullable = false,
+        bool omitQueryArguments = false,
+        bool idOnly = false)
+        where TReturn : class
+    {
+        var field = BuildSingleField(name, resolve, mutate, graphType, nullable, omitQueryArguments, idOnly);
         graph.AddField(field);
         return new FieldBuilderEx<object, TReturn>(field);
     }
@@ -20,13 +38,31 @@ partial class EfGraphQLService<TDbContext>
     public FieldBuilder<object, TReturn> AddSingleField<TReturn>(
         IComplexGraphType graph,
         string name,
-        Func<ResolveEfFieldContext<TDbContext, object>, IQueryable<TReturn>> resolve,
+        Func<ResolveEfFieldContext<TDbContext, object>, IQueryable<TReturn>?> resolve,
         Func<ResolveEfFieldContext<TDbContext, object>, TReturn, Task>? mutate = null,
         Type? graphType = null,
-        bool nullable = false)
+        bool nullable = false,
+        bool omitQueryArguments = false,
+        bool idOnly = false)
         where TReturn : class
     {
-        var field = BuildSingleField(name, resolve, mutate, graphType, nullable);
+        var field = BuildSingleField(name, resolve, mutate, graphType, nullable, omitQueryArguments, idOnly);
+        graph.AddField(field);
+        return new FieldBuilderEx<object, TReturn>(field);
+    }
+
+    public FieldBuilder<object, TReturn> AddSingleField<TReturn>(
+        IComplexGraphType graph,
+        string name,
+        Func<ResolveEfFieldContext<TDbContext, object>, Task<IQueryable<TReturn>?>?> resolve,
+        Func<ResolveEfFieldContext<TDbContext, object>, TReturn, Task>? mutate = null,
+        Type? graphType = null,
+        bool nullable = false,
+        bool omitQueryArguments = false,
+        bool idOnly = false)
+        where TReturn : class
+    {
+        var field = BuildSingleField(name, resolve, mutate, graphType, nullable, omitQueryArguments, idOnly);
         graph.AddField(field);
         return new FieldBuilderEx<object, TReturn>(field);
     }
@@ -34,83 +70,166 @@ partial class EfGraphQLService<TDbContext>
     public FieldBuilder<TSource, TReturn> AddSingleField<TSource, TReturn>(
         IComplexGraphType graph,
         string name,
-        Func<ResolveEfFieldContext<TDbContext, TSource>, IQueryable<TReturn>> resolve,
+        Func<ResolveEfFieldContext<TDbContext, TSource>, IQueryable<TReturn>?> resolve,
         Func<ResolveEfFieldContext<TDbContext, TSource>, TReturn, Task>? mutate = null,
         Type? graphType = null,
-        bool nullable = false)
+        bool nullable = false,
+        bool omitQueryArguments = false,
+        bool idOnly = false)
         where TReturn : class
     {
-        var field = BuildSingleField(name, resolve, mutate, graphType, nullable);
+        var field = BuildSingleField(name, resolve, mutate, graphType, nullable, omitQueryArguments, idOnly);
+        graph.AddField(field);
+        return new FieldBuilderEx<TSource, TReturn>(field);
+    }
+
+    public FieldBuilder<TSource, TReturn> AddSingleField<TSource, TReturn>(
+        IComplexGraphType graph,
+        string name,
+        Func<ResolveEfFieldContext<TDbContext, TSource>, Task<IQueryable<TReturn>?>?> resolve,
+        Func<ResolveEfFieldContext<TDbContext, TSource>, TReturn, Task>? mutate = null,
+        Type? graphType = null,
+        bool nullable = false,
+        bool omitQueryArguments = false,
+        bool idOnly = false)
+        where TReturn : class
+    {
+        var field = BuildSingleField(name, resolve, mutate, graphType, nullable, omitQueryArguments, idOnly);
         graph.AddField(field);
         return new FieldBuilderEx<TSource, TReturn>(field);
     }
 
     FieldType BuildSingleField<TSource, TReturn>(
         string name,
-        Func<ResolveEfFieldContext<TDbContext, TSource>, IQueryable<TReturn>> resolve,
+        Func<ResolveEfFieldContext<TDbContext, TSource>, IQueryable<TReturn>?> resolve,
         Func<ResolveEfFieldContext<TDbContext, TSource>, TReturn, Task>? mutate,
         Type? graphType,
-        bool nullable)
+        bool nullable,
+        bool omitQueryArguments,
+        bool idOnly)
+        where TReturn : class
+        => BuildSingleField(
+            name,
+            _ =>
+            {
+                var queryable = resolve(_);
+                return Task.FromResult(queryable);
+            },
+            mutate,
+            graphType,
+            nullable,
+            omitQueryArguments,
+            idOnly);
+
+    FieldType BuildSingleField<TSource, TReturn>(
+        string name,
+        Func<ResolveEfFieldContext<TDbContext, TSource>, Task<IQueryable<TReturn>?>?> resolve,
+        Func<ResolveEfFieldContext<TDbContext, TSource>, TReturn, Task>? mutate,
+        Type? graphType,
+        bool nullable,
+        bool omitQueryArguments,
+        bool idOnly)
         where TReturn : class
     {
         Guard.AgainstWhiteSpace(nameof(name), name);
 
         graphType ??= GraphTypeFinder.FindGraphType<TReturn>(nullable);
 
+        var names = GetKeyNames<TReturn>();
         var hasId = keyNames.ContainsKey(typeof(TReturn));
-        return new()
+        var type = new FieldType
         {
             Name = name,
             Type = graphType,
-            Arguments = ArgumentAppender.GetQueryArguments(hasId, false),
             Resolver = new FuncFieldResolver<TSource, TReturn?>(
                 async context =>
                 {
-                    var efFieldContext = BuildContext(context);
+                    var fieldContext = BuildContext(context);
 
-                    var names = GetKeyNames<TReturn>();
+                    var task = resolve(fieldContext);
+                    if (task == null)
+                    {
+                        return ReturnNullable();
+                    }
 
-                    var query = resolve(efFieldContext);
+                    var query = await task;
+                    if (query == null)
+                    {
+                        return ReturnNullable();
+                    }
+
                     if (disableTracking)
                     {
                         query = query.AsNoTracking();
                     }
 
                     query = includeAppender.AddIncludes(query, context);
-                    query = query.ApplyGraphQlArguments(context, names, false);
+                    query = query.ApplyGraphQlArguments(context, names, false, omitQueryArguments);
 
                     QueryLogger.Write(query);
 
                     TReturn? single;
-                    if (disableAsync)
+                    try
                     {
-                        single = query.SingleOrDefault();
+                        if (query.Provider is IAsyncQueryProvider)
+                        {
+                            single = await query.SingleOrDefaultAsync(context.CancellationToken);
+                        }
+                        else
+                        {
+                            single = query.SingleOrDefault();
+                        }
                     }
-                    else
+                    catch (TaskCanceledException)
                     {
-                        single = await query.SingleOrDefaultAsync(context.CancellationToken);
+                        throw;
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        throw;
+                    }
+                    catch (Exception exception)
+                    {
+                        throw new(
+                            $"""
+                             Failed to execute query for field `{name}`
+                             GraphType: {graphType.FullName}
+                             TSource: {typeof(TSource).FullName}
+                             TReturn: {typeof(TReturn).FullName}
+                             OmitQueryArguments: {omitQueryArguments}
+                             Nullable: {nullable}
+                             KeyNames: {JoinKeys(names)}
+                             Query: {query.ToQueryString()}
+                             """,
+                            exception);
                     }
 
                     if (single is not null)
                     {
-                        if (await efFieldContext.Filters.ShouldInclude(context.UserContext, context.User, single))
+                        if (fieldContext.Filters == null ||
+                            await fieldContext.Filters.ShouldInclude(context.UserContext, fieldContext.DbContext, context.User, single))
                         {
                             if (mutate is not null)
                             {
-                                await mutate.Invoke(efFieldContext, single);
+                                await mutate.Invoke(fieldContext, single);
                             }
 
                             return single;
                         }
                     }
 
-                    if (nullable)
-                    {
-                        return null;
-                    }
-
-                    throw new ExecutionError("Not found");
+                    return ReturnNullable();
                 })
         };
+
+        if (!omitQueryArguments)
+        {
+            type.Arguments = ArgumentAppender.GetQueryArguments(hasId, false, idOnly, omitQueryArguments);
+        }
+
+        return type;
+
+        TReturn? ReturnNullable() =>
+            nullable ? null : throw new SingleEntityNotFoundException();
     }
 }

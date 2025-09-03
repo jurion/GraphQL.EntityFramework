@@ -1,19 +1,19 @@
 ﻿static class PropertyCache<TInput>
 {
     public static ParameterExpression SourceParameter = Expression.Parameter(typeof(TInput));
-    static ConcurrentDictionary<string, Property<TInput>> properties = new();
+    static ConcurrentDictionary<string, Property<TInput>> properties = [];
 
     public static Property<TInput> GetProperty(string path) =>
         properties.GetOrAdd(
             path,
-            x =>
+            _ =>
             {
-                var left = AggregatePath(x, SourceParameter);
+                var left = AggregatePath(_, SourceParameter);
 
                 var converted = Expression.Convert(left, typeof(object));
                 var lambda = Expression.Lambda<Func<TInput, object>>(converted, SourceParameter);
                 var compile = lambda.Compile();
-                var listContainsMethod = ReflectionCache.GetListContains(left.Type);
+                var listContains = ReflectionCache.GetListContains(left.Type);
 
                 var body = (MemberExpression)left;
                 return new(
@@ -23,7 +23,7 @@
                     Func: compile,
                     PropertyType: left.Type,
                     Info: body.Member,
-                    ListContainsMethod: listContainsMethod
+                    ListContains: listContains
                 );
             });
 
@@ -53,9 +53,8 @@
         const BindingFlags bindingFlagsNonPublic = BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.IgnoreCase | BindingFlags.FlattenHierarchy;
 
         // Attempt to get the public property
-        var propertyOrField = type.GetProperty(propertyOrFieldName, bindingFlagsPublic) ?? (MemberInfo?)type.GetField(propertyOrFieldName, bindingFlagsPublic);
-
-        // If not found
+        var propertyOrField = type.GetProperty(propertyOrFieldName, bindingFlagsPublic) ??
+                              (MemberInfo?)type.GetField(propertyOrFieldName, bindingFlagsPublic);
 
         // If not found
         propertyOrField ??= type.GetProperty(propertyOrFieldName, bindingFlagsNonPublic);

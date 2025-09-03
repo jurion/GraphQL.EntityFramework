@@ -10,7 +10,25 @@ To change this file edit the source file and then run MarkdownSnippets.
 [![Build status](https://ci.appveyor.com/api/projects/status/x554cp7clu8yh2yy/branch/main?svg=true)](https://ci.appveyor.com/project/SimonCropp/graphql-entityframework)
 [![NuGet Status](https://img.shields.io/nuget/v/GraphQL.EntityFramework.svg)](https://www.nuget.org/packages/GraphQL.EntityFramework/)
 
-Add [EntityFramework Core IQueryable](https://docs.microsoft.com/en-us/dotnet/api/microsoft.entityframeworkcore.dbset-1.system-linq-iqueryable-provider) support to [GraphQL](https://github.com/graphql-dotnet/graphql-dotnet)
+
+Add [EntityFramework Core IQueryable](https://docs.microsoft.com/en-us/dotnet/api/microsoft.entityframeworkcore.dbset-1.system-linq-iqueryable-provider) support to [GraphQL](https://github.com/graphql-dotnet/graphql-dotnet)<!-- singleLineInclude: intro. path: /docs/mdsource/intro.include.md -->
+
+
+**See [Milestones](../../milestones?state=closed) for release notes.**
+
+
+## Sponsors
+
+### Entity Framework Extensions<!-- include: zzz. path: /docs/mdsource/zzz.include.md -->
+
+[Entity Framework Extensions](https://entityframework-extensions.net/?utm_source=simoncropp&utm_medium=GraphQL.EntityFramework) is a major sponsor and is proud to contribute to the development this project.
+
+[![Entity Framework Extensions](https://raw.githubusercontent.com/SimonCropp/GraphQL.EntityFramework/refs/heads/main/docs/zzz.png)](https://entityframework-extensions.net/?utm_source=simoncropp&utm_medium=GraphQL.EntityFramework)<!-- endInclude -->
+
+
+### JetBrains
+
+[![JetBrains logo.](https://resources.jetbrains.com/storage/products/company/brand/logos/jetbrains.svg)](https://jb.gg/OpenSourceSupport)
 
 
 ## NuGet package

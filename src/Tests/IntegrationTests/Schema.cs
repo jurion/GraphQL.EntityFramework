@@ -13,6 +13,8 @@
         RegisterTypeMapping(typeof(ChildEntity), typeof(ChildGraphType));
         RegisterTypeMapping(typeof(ParentEntity), typeof(ParentGraphType));
         RegisterTypeMapping(typeof(DateEntity), typeof(DateEntityGraphType));
+        RegisterTypeMapping(typeof(EnumEntity), typeof(EnumEntityGraphType));
+        RegisterTypeMapping(typeof(StringEntity), typeof(StringEntityGraphType));
         RegisterTypeMapping(typeof(TimeEntity), typeof(TimeEntityGraphType));
         RegisterTypeMapping(typeof(TimeEntity), typeof(TimeEntityGraphType));
         RegisterTypeMapping(typeof(Level1Entity), typeof(Level1GraphType));
@@ -21,9 +23,9 @@
         RegisterTypeMapping(typeof(IncludeNonQueryableB), typeof(IncludeNonQueryableBGraphType));
         RegisterTypeMapping(typeof(IncludeNonQueryableA), typeof(IncludeNonQueryableAGraphType));
         RegisterTypeMapping(typeof(WithMisNamedQueryParentEntity), typeof(WithMisNamedQueryParentGraphType));
+        RegisterTypeMapping(typeof(WithMisNamedQueryChildEntity), typeof(WithMisNamedQueryChildGraphType));
         RegisterTypeMapping(typeof(WithNullableEntity), typeof(WithNullableGraphType));
         RegisterTypeMapping(typeof(NamedIdEntity), typeof(NamedIdGraphType));
-        RegisterTypeMapping(typeof(WithMisNamedQueryChildEntity), typeof(WithMisNamedQueryChildGraphType));
         RegisterTypeMapping(typeof(DerivedEntity), typeof(DerivedGraphType));
         RegisterTypeMapping(typeof(DerivedWithNavigationEntity), typeof(DerivedWithNavigationGraphType));
         RegisterTypeMapping(typeof(DerivedChildEntity), typeof(DerivedChildGraphType));

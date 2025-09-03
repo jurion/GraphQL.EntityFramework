@@ -17,9 +17,8 @@ public static class EfGraphQLConventions
             IServiceCollection services,
             ResolveDbContext<TDbContext>? resolveDbContext = null,
             IModel? model = null,
-            ResolveFilters? resolveFilters = null,
-            bool disableTracking = false,
-            bool disableAsync = false)
+            ResolveFilters<TDbContext>? resolveFilters = null,
+            bool disableTracking = false)
 
         #endregion
 
@@ -28,36 +27,39 @@ public static class EfGraphQLConventions
         RegisterScalarsAndArgs(services);
         services.AddHttpContextAccessor();
         services.AddTransient<HttpContextCapture>();
-        services.AddSingleton(
-            provider => Build(resolveDbContext, model, resolveFilters, provider, disableTracking, disableAsync));
-        services.AddSingleton<IEfGraphQLService<TDbContext>>(
-            provider => provider.GetRequiredService<EfGraphQLService<TDbContext>>());
+        services.AddSingleton(provider => Build(resolveDbContext, model, resolveFilters, provider, disableTracking));
+        services.AddSingleton<IEfGraphQLService<TDbContext>>(provider => provider.GetRequiredService<EfGraphQLService<TDbContext>>());
     }
 
     static EfGraphQLService<TDbContext> Build<TDbContext>(
         ResolveDbContext<TDbContext>? dbContextResolver,
         IModel? model,
-        ResolveFilters? filters,
+        ResolveFilters<TDbContext>? filters,
         IServiceProvider provider,
-        bool disableTracking,
-        bool disableAsync)
+        bool disableTracking)
         where TDbContext : DbContext
     {
         model ??= ResolveModel<TDbContext>(provider);
-        filters ??= provider.GetService<ResolveFilters>();
-        dbContextResolver ??= _ => DbContextFromProvider<TDbContext>(provider);
+        filters ??= provider.GetService<ResolveFilters<TDbContext>>();
+        dbContextResolver ??= (_, requestServices) => DbContextFromProvider<TDbContext>(provider, requestServices);
 
         return new(
             model,
             dbContextResolver,
             filters,
-            disableTracking,
-            disableAsync);
+            disableTracking);
     }
 
-    static TDbContext DbContextFromProvider<TDbContext>(IServiceProvider provider)
+    static TDbContext DbContextFromProvider<TDbContext>(IServiceProvider provider, IServiceProvider? requestServices)
         where TDbContext : DbContext
     {
+        var dataFromRequestServices = requestServices?
+            .GetService<TDbContext>();
+        if (dataFromRequestServices is not null)
+        {
+            return dataFromRequestServices;
+        }
+
         var dataFromHttpContext = provider.GetService<HttpContextCapture>()?
             .HttpContextAccessor
             .HttpContext?
@@ -79,7 +81,7 @@ public static class EfGraphQLConventions
 
     static void RegisterScalarsAndArgs(IServiceCollection services)
     {
-        services.AddSingleton<EnumerationGraphType<StringComparison>>();
+        services.AddSingleton<EnumerationGraphType<DayOfWeek>>();
         services.AddSingleton<WhereExpressionGraph>();
         services.AddSingleton<OrderByGraph>();
         services.AddSingleton<ComparisonGraph>();

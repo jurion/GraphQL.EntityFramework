@@ -21,14 +21,15 @@ public class Startup
         services.AddSingleton<IDocumentExecuter, EfDocumentExecuter>();
         services.AddSingleton<ISchema, Schema>();
         services.AddMvc(option => option.EnableEndpointRouting = false);
+        services.AddGraphQL(null);
     }
 
     static IEnumerable<Type> GetGraphQlTypes() =>
         typeof(Startup).Assembly
             .GetTypes()
-            .Where(x => !x.IsAbstract &&
-                        (typeof(IObjectGraphType).IsAssignableFrom(x) ||
-                         typeof(IInputObjectGraphType).IsAssignableFrom(x)));
+            .Where(_ => !_.IsAbstract &&
+                        (_.IsAssignableTo(typeof(IObjectGraphType)) ||
+                         _.IsAssignableTo(typeof(IInputObjectGraphType))));
 
     public void Configure(IApplicationBuilder builder)
     {

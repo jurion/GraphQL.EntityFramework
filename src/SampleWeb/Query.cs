@@ -10,39 +10,44 @@ public class Query :
     {
         AddQueryField(
             name: "companies",
-            resolve: context => context.DbContext.Companies);
+            resolve: _ => _.DbContext.Companies);
 
         #endregion
 
         AddSingleField(
-            resolve: context => context.DbContext.Companies,
+            resolve: _ => _.DbContext.Companies,
             name: "company");
 
         AddSingleField(
-            resolve: context => context.DbContext.Companies,
+            resolve: _ => _.DbContext.Companies,
+            name: "companyById",
+            idOnly: true);
+
+        AddSingleField(
+            resolve: _ => _.DbContext.Companies,
             name: "companyOrNull",
             nullable: true);
 
         AddQueryConnectionField(
             name: "companiesConnection",
-            resolve: context => context.DbContext.Companies);
+            resolve: _ => _.DbContext.Companies.OrderBy(_=>_.Id));
 
         AddQueryField(
             name: "employees",
-            resolve: context => context.DbContext.Employees);
+            resolve: _ => _.DbContext.Employees);
 
         AddQueryField(
             name: "employeesByArgument",
             resolve: context =>
             {
                 var content = context.GetArgument<string>("content");
-                return context.DbContext.Employees.Where(x => x.Content == content);
+                return context.DbContext.Employees.Where(_ => _.Content == content);
             })
             .Argument<StringGraphType>("content");
 
         AddQueryConnectionField(
             name: "employeesConnection",
-            resolve: context => context.DbContext.Employees);
+            resolve: _ => _.DbContext.Employees.OrderBy(_ => _.Content));
 
         #region ManuallyApplyWhere
 
@@ -70,7 +75,7 @@ public class Query :
                     select new EmployeeSummary
                     {
                         CompanyId = g.Key.CompanyId,
-                        AverageAge = g.Average(x => x.Age),
+                        AverageAge = g.Average(_ => _.Age),
                     };
             });
 

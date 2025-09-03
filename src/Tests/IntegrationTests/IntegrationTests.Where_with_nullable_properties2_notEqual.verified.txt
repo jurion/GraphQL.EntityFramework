@@ -1,0 +1,20 @@
+﻿{
+  target:
+{
+  "data": {
+    "withNullableEntities": [
+      {
+        "id": "Guid_1"
+      }
+    ]
+  }
+},
+  sql: {
+    Text:
+select w.Id,
+       w.Nullable
+from   WithNullableEntities as w
+where  w.Nullable <> 10
+       or w.Nullable is null
+  }
+}

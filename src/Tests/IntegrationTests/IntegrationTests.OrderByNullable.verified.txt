@@ -1,0 +1,22 @@
+﻿{
+  target:
+{
+  "data": {
+    "parentEntities": [
+      {
+        "property": null
+      },
+      {
+        "property": "Value1"
+      }
+    ]
+  }
+},
+  sql: {
+    Text:
+select   p.Id,
+         p.Property
+from     ParentEntities as p
+order by p.Property
+  }
+}

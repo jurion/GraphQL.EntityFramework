@@ -1,5 +1,4 @@
-﻿[UsesVerify]
-public class MultiContextTests
+﻿public class MultiContextTests
 {
     [Fact]
     public async Task Run()
@@ -8,7 +7,8 @@ public class MultiContextTests
 
         var sqlInstance2 = new SqlInstance<DbContext2>(constructInstance: builder => new(builder.Options));
 
-        var query = """
+        var query =
+            """
             {
               entity1
               {
@@ -50,10 +50,10 @@ public class MultiContextTests
 
         EfGraphQLConventions.RegisterInContainer(
             services,
-            userContext => ((UserContext) userContext).DbContext1);
+            (_, requestServices) => requestServices!.GetRequiredService<DbContext1>());
         EfGraphQLConventions.RegisterInContainer(
             services,
-            userContext => ((UserContext) userContext).DbContext2);
+            (_, requestServices) => requestServices!.GetRequiredService<DbContext2>());
 
         #endregion
 
@@ -67,7 +67,7 @@ public class MultiContextTests
         {
             Schema = schema,
             Query = query,
-            UserContext = new UserContext(dbContext1, dbContext2)
+            RequestServices = provider,
         };
 
         #endregion
@@ -76,17 +76,3 @@ public class MultiContextTests
         await Verify(result.Serialize());
     }
 }
-
-#region MultiUserContext
-public class UserContext: Dictionary<string, object?>
-{
-    public UserContext(DbContext1 context1, DbContext2 context2)
-    {
-        DbContext1 = context1;
-        DbContext2 = context2;
-    }
-
-    public readonly DbContext1 DbContext1;
-    public readonly DbContext2 DbContext2;
-}
-#endregion

@@ -16,7 +16,7 @@ public interface ICustomSorting<TItem>
     bool ApplySort(IEnumerable<TItem> query, OrderBy orderBy, IResolveFieldContext context, bool isFirst, out IOrderedEnumerable<TItem> ordered);
 
     /// <summary>
-    ///     Apply custom sorting to the qureyables
+    ///     Apply custom sorting to the queryable
     /// </summary>
     /// <param name="query">The query to apply sorting to.</param>
     /// <param name="orderBy">The sorting to apply</param>

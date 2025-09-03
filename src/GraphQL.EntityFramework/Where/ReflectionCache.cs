@@ -21,20 +21,17 @@
     static MethodInfo dateTimeNullableListContains;
     static MethodInfo dateTimeOffsetListContains;
     static MethodInfo dateTimeOffsetNullableListContains;
-    public static MethodInfo StringLike = typeof(DbFunctionsExtensions).GetMethod("Like", new[] {typeof(DbFunctions), typeof(string), typeof(string)})!;
-    public static MethodInfo StringEqualComparison = typeof(string).GetMethod("Equals", new[] {typeof(string), typeof(string), typeof(StringComparison)})!;
-    public static MethodInfo StringEqual = typeof(string).GetMethod("Equals", new[] {typeof(string), typeof(string)})!;
-    public static MethodInfo StringStartsWithComparison = typeof(string).GetMethod("StartsWith", new[] {typeof(string), typeof(StringComparison)})!;
-    public static MethodInfo StringStartsWith = typeof(string).GetMethod("StartsWith", new[] {typeof(string)})!;
-    public static MethodInfo StringIndexOfComparison = typeof(string).GetMethod("IndexOf", new[] {typeof(string), typeof(StringComparison)})!;
-    public static MethodInfo StringIndexOf = typeof(string).GetMethod("IndexOf", new[] {typeof(string)})!;
-    public static MethodInfo StringEndsWithComparison = typeof(string).GetMethod("EndsWith", new[] {typeof(string), typeof(StringComparison)})!;
-    public static MethodInfo StringEndsWith = typeof(string).GetMethod("EndsWith", new[] {typeof(string)})!;
+    public static MethodInfo StringLike = typeof(DbFunctionsExtensions).GetMethod("Like", [typeof(DbFunctions), typeof(string), typeof(string)])!;
+    public static MethodInfo StringEqual = typeof(string).GetMethod("Equals", [typeof(string), typeof(string)])!;
+    public static MethodInfo StringStartsWith = typeof(string).GetMethod("StartsWith", [typeof(string)])!;
+    public static MethodInfo StringIndexOf = typeof(string).GetMethod("IndexOf", [typeof(string)])!;
+    public static MethodInfo StringEndsWith = typeof(string).GetMethod("EndsWith", [typeof(string)])!;
 
     static ReflectionCache()
     {
         StringAny = typeof(Enumerable).GetMethods(BindingFlags.Static | BindingFlags.Public)
-            .Single(m => m.Name == "Any" && m.GetParameters().Length == 2)
+            .Single(_ => _.Name == "Any" &&
+                         _.GetParameters().Length == 2)
             .MakeGenericMethod(typeof(string));
         guidListContains = GetContains<Guid>();
         guidNullableListContains = GetContains<Guid?>();
@@ -60,6 +57,11 @@
 
     public static MethodInfo? GetListContains(Type type)
     {
+        if (type == typeof(string))
+        {
+            return null;
+        }
+
         if (type == typeof(Guid))
         {
             return guidListContains;
@@ -160,11 +162,16 @@
             return dateTimeOffsetNullableListContains;
         }
 
+        if (IsEnumType(type))
+        {
+            return typeof(ICollection<>).MakeGenericType(type).GetMethod("Contains");
+        }
+
         return null;
     }
 
     static MethodInfo GetContains<T>() =>
-        typeof(List<T>).GetMethod("Contains")!;
+        typeof(ICollection<T>).GetMethod("Contains")!;
 
     public static bool TryGetEnumType(this Type type, [NotNullWhen(true)] out Type? enumType)
     {
@@ -191,6 +198,27 @@
         return false;
     }
 
+    public static bool IsEnumType(this Type type)
+    {
+        if (type.IsEnum)
+        {
+            return true;
+        }
+
+        var underlying = Nullable.GetUnderlyingType(type);
+        if (underlying is null)
+        {
+            return false;
+        }
+
+        if (underlying.IsEnum)
+        {
+            return true;
+        }
+
+        return false;
+    }
+
     public static bool TryGetCollectionType(this Type type, [NotNullWhen(true)] out Type? collectionGenericType)
     {
         Type? collectionType;
@@ -202,8 +230,8 @@
         else
         {
             collectionType = type.GetInterfaces()
-                .SingleOrDefault(x => x.IsGenericType &&
-                                      x.GetGenericTypeDefinition() == typeof(ICollection<>));
+                .SingleOrDefault(_ => _.IsGenericType &&
+                                      _.GetGenericTypeDefinition() == typeof(ICollection<>));
         }
 
         if (collectionType is null)
@@ -248,7 +276,7 @@
             var typeProperties = subType.GetProperties(flags);
 
             var newPropertyInfos = typeProperties
-                .Where(x => !propertyInfos.Contains(x));
+                .Where(_ => !propertyInfos.Contains(_));
 
             propertyInfos.InsertRange(0, newPropertyInfos);
         }

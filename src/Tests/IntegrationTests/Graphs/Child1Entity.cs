@@ -1,7 +1,6 @@
-public class Child1Entity
+﻿public class Child1Entity
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public Guid? ParentId { get; set; }
     public WithManyChildrenEntity? Parent { get; set; }
-    public decimal Decimal { get; set; }
 }

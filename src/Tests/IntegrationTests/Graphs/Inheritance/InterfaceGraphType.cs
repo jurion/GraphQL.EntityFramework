@@ -4,10 +4,10 @@
     public InterfaceGraphType(IEfGraphQLService<IntegrationDbContext> graphQlService) :
         base(graphQlService)
     {
-        Field(e => e.Id);
-        Field(e => e.Property, nullable: true);
+        Field(_ => _.Id);
+        Field(_ => _.Property, nullable: true);
         AddNavigationConnectionField<DerivedChildEntity>(
             name: "childrenFromInterface",
-            includeNames: new[] { "ChildrenFromBase" });
+            includeNames: [ "ChildrenFromBase" ]);
     }
 }

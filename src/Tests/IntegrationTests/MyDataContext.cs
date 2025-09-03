@@ -1,8 +1,10 @@
-﻿public class IntegrationDbContext :
-    DbContext
+public class IntegrationDbContext(DbContextOptions options) :
+    DbContext(options)
 {
     public DbSet<ParentEntity> ParentEntities { get; set; } = null!;
     public DbSet<DateEntity> DateEntities { get; set; } = null!;
+    public DbSet<EnumEntity> EnumEntities { get; set; } = null!;
+    public DbSet<StringEntity> StringEntities { get; set; } = null!;
     public DbSet<TimeEntity> TimeEntities { get; set; } = null!;
     public DbSet<FilterParentEntity> FilterParentEntities { get; set; } = null!;
     public DbSet<FilterChildEntity> FilterChildEntities { get; set; } = null!;
@@ -25,19 +27,16 @@
     public DbSet<ManyToManyLeftEntity> ManyToManyLeftEntities { get; set; } = null!;
     public DbSet<ManyToManyRightEntity> ManyToManyRightEntities { get; set; } = null!;
     public DbSet<ManyToManyMiddleEntity> ManyToManyMiddleEntities { get; set; } = null!;
+    public DbSet<ManyToManyShadowLeftEntity> ManyToManyShadowLeftEntities { get; set; } = null!;
+    public DbSet<ManyToManyShadowRightEntity> ManyToManyShadowRightEntities { get; set; } = null!;
     public DbSet<OwnedParent> OwnedParents { get; set; } = null!;
-
-    public IntegrationDbContext(DbContextOptions options) :
-        base(options)
-    {
-    }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<ParentEntityView>()
             .ToView("ParentEntityView")
             .HasNoKey()
-            .Property(v => v.Property).HasColumnName("Property");
+            .Property(_ => _.Property).HasColumnName("Property");
         modelBuilder.Entity<CustomTypeEntity>();
         modelBuilder.Entity<WithNullableEntity>();
         modelBuilder.Entity<FilterParentEntity>();
@@ -48,9 +47,9 @@
         modelBuilder.Entity<WithMisNamedQueryChildEntity>();
         modelBuilder.Entity<IncludeNonQueryableB>();
         modelBuilder.Entity<IncludeNonQueryableA>()
-            .HasOne(p => p.IncludeNonQueryableB)
-            .WithOne(i => i.IncludeNonQueryableA)
-            .HasForeignKey<IncludeNonQueryableB>(b => b.IncludeNonQueryableAId);
+            .HasOne(_ => _.IncludeNonQueryableB)
+            .WithOne(_ => _.IncludeNonQueryableA)
+            .HasForeignKey<IncludeNonQueryableB>(_ => _.IncludeNonQueryableAId);
         modelBuilder.Entity<Level1Entity>();
         modelBuilder.Entity<Level2Entity>();
         modelBuilder.Entity<Level3Entity>();
@@ -62,33 +61,18 @@
         modelBuilder.Entity<DerivedEntity>().HasBaseType<InheritedEntity>();
         modelBuilder.Entity<DerivedWithNavigationEntity>()
             .HasBaseType<InheritedEntity>()
-            .HasMany(e => e.Children)
-            .WithOne(e => e.TypedParent!)
-            .HasForeignKey(e => e.TypedParentId);
+            .HasMany(_ => _.Children)
+            .WithOne(_ => _.TypedParent!)
+            .HasForeignKey(_ => _.TypedParentId);
         modelBuilder.Entity<ManyToManyRightEntity>()
-            .HasMany(r => r.Lefts)
+            .HasMany(_ => _.Lefts)
             .WithMany(l => l.Rights)
             .UsingEntity<ManyToManyMiddleEntity>(
-                x => x.HasOne(xs => xs.ManyToManyLeftEntity).WithMany(),
-                x => x.HasOne(xs => xs.ManyToManyRightEntity).WithMany());
+                _ => _.HasOne(_ => _.ManyToManyLeftEntity).WithMany(),
+                _ => _.HasOne(_ => _.ManyToManyRightEntity).WithMany());
+        modelBuilder.Entity<ManyToManyShadowLeftEntity>()
+            .HasMany(x=> x.ManyToManyShadowRightEntities)
+            .WithMany(x=> x.ManyToManyShadowLeftEntities)
+            .UsingEntity("ManyToManyShadowMiddleEntity");
     }
-    protected override void ConfigureConventions(ModelConfigurationBuilder builder)
-    {
-        builder.Properties<Date>()
-            .HaveConversion<DateConverter>()
-            .HaveColumnType("date");
-
-        builder.Properties<Date?>()
-            .HaveConversion<NullableDateConverter>()
-            .HaveColumnType("date");
-
-        builder.Properties<Time>()
-            .HaveConversion<TimeConverter>()
-            .HaveColumnType("time");
-
-        builder.Properties<Time?>()
-            .HaveConversion<NullableTimeConverter>()
-            .HaveColumnType("time");
-    }
-
 }

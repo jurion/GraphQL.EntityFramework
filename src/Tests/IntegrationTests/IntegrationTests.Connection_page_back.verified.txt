@@ -31,22 +31,21 @@
 },
   sql: [
     {
-      HasTransaction: false,
       Text:
-SELECT COUNT(*)
-FROM [ParentEntities] AS [p]
+select COUNT(*)
+from   ParentEntities as p
     },
     {
-      HasTransaction: false,
+      Text:
+select   p.Id,
+         p.Property
+from     ParentEntities as p
+order by p.Id
+offset @__p_0 rows fetch next @__p_1 rows only,
       Parameters: {
         @__p_0: 0,
         @__p_1: 2
-      },
-      Text:
-SELECT [p].[Id], [p].[Property]
-FROM [ParentEntities] AS [p]
-ORDER BY (SELECT 1)
-OFFSET @__p_0 ROWS FETCH NEXT @__p_1 ROWS ONLY
+      }
     }
   ]
 }

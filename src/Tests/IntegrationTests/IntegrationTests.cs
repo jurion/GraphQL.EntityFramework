@@ -1,7 +1,3 @@
-using Tests.IntegrationTests.Graphs;
-using Filters = GraphQL.EntityFramework.Filters;
-
-[UsesVerify]
 public partial class IntegrationTests
 {
     static SqlInstance<IntegrationDbContext> sqlInstance;
@@ -10,8 +6,10 @@ public partial class IntegrationTests
         sqlInstance = new(
             buildTemplate: async data =>
             {
-                await data.Database.EnsureCreatedAsync();
-                await data.Database.ExecuteSqlRawAsync("""
+                var database = data.Database;
+                await database.EnsureCreatedAsync();
+                await database.ExecuteSqlRawAsync(
+                    """
                     create view ParentEntityView as
                             select Property
                             from ParentEntities
@@ -19,7 +17,11 @@ public partial class IntegrationTests
             },
             constructInstance: builder =>
             {
-                builder.ConfigureWarnings(x => x.Ignore(CoreEventId.NavigationBaseIncludeIgnored));
+                builder.ConfigureWarnings(_ =>
+                    _.Ignore(
+                        CoreEventId.NavigationBaseIncludeIgnored,
+                        CoreEventId.ShadowForeignKeyPropertyCreated,
+                        CoreEventId.CollectionWithoutComparer));
                 return new(builder.Options);
             });
 
@@ -32,17 +34,17 @@ public partial class IntegrationTests
         services.AddSingleton<Query>();
         services.AddSingleton<Mutation>();
         services.AddSingleton(database.Context);
+        services.AddGraphQL(null);
         foreach (var type in GetGraphQlTypes())
         {
             services.AddSingleton(type);
         }
 
-        EfGraphQLConventions.RegisterInContainer(services, _ => dbContext, dbContext.Model);
+        EfGraphQLConventions.RegisterInContainer(services, (_, _) => dbContext, dbContext.Model);
         await using var provider = services.BuildServiceProvider();
         using var schema = new Schema(provider);
 
-        var printer = new SchemaPrinter(schema);
-        var print = printer.Print();
+        var print = schema.Print();
         await Verify(print);
     }
 
@@ -51,13 +53,14 @@ public partial class IntegrationTests
     {
         string? queryText = null;
         QueryLogger.Enable(s => queryText = s);
-        var query = """
+        var query =
+            """
             {
               parentEntities
               (where:
                 [
-                  {path: 'Property', comparison: startsWith, value: 'Valu'}
-                  {path: 'Property', comparison: endsWith, value: 'ue3'}
+                  {path: "Property", comparison: startsWith, value: "Valu"}
+                  {path: "Property", comparison: endsWith, value: "ue3"}
                 ]
               )
               {
@@ -80,20 +83,21 @@ public partial class IntegrationTests
         };
 
         await using var database = await sqlInstance.Build();
-        await RunQuery(database, query, null, null, false, new object[] { entity1, entity2, entity3 });
+        await RunQuery(database, query, null, null, false, [entity1, entity2, entity3]);
         Assert.NotNull(queryText);
     }
 
     [Fact]
     public async Task Where_multiple()
     {
-        var query = """
+        var query =
+            """
             {
               parentEntities
               (where:
                 [
-                  {path: 'Property', comparison: startsWith, value: 'Valu'}
-                  {path: 'Property', comparison: endsWith, value: 'ue3'}
+                  {path: "Property", comparison: startsWith, value: "Valu"}
+                  {path: "Property", comparison: endsWith, value: "ue3"}
                 ]
               )
               {
@@ -116,15 +120,16 @@ public partial class IntegrationTests
         };
 
         await using var database = await sqlInstance.Build();
-        await RunQuery(database, query, null, null, false, new object[] { entity1, entity2, entity3 });
+        await RunQuery(database, query, null, null, false, [entity1, entity2, entity3]);
     }
 
     [Fact]
     public async Task Where_date()
     {
-        var query = """
+        var query =
+            """
             {
-              dateEntities (where: {path: 'Property', comparison: equal, value: '2020-10-1'})
+              dateEntities (where: {path: "Property", comparison: equal, value: "2020-10-1"})
               {
                 id
               }
@@ -138,15 +143,257 @@ public partial class IntegrationTests
         };
 
         await using var database = await sqlInstance.Build();
-        await RunQuery(database, query, null, null, false, new object[] { entity1, entity2 });
+        await RunQuery(database, query, null, null, false, [entity1, entity2]);
+    }
+
+    [Fact]
+    public async Task Where_date_notEqual()
+    {
+        var query =
+            """
+            {
+              dateEntities (where: {path: "Property", comparison: notEqual, value: "2020-10-1"})
+              {
+                id
+              }
+            }
+            """;
+
+        var entity1 = new DateEntity();
+        var entity2 = new DateEntity
+        {
+            Property = new Date(2020, 10, 1)
+        };
+
+        await using var database = await sqlInstance.Build();
+        await RunQuery(database, query, null, null, false, [entity1, entity2]);
+    }
+
+    [Fact]
+    public async Task Where_enum()
+    {
+        var query =
+            """
+            {
+              enumEntities (where: {path: "Property", comparison: equal, value: "Thursday"})
+              {
+                id
+              }
+            }
+            """;
+
+        var entity1 = new EnumEntity();
+        var entity2 = new EnumEntity
+        {
+            Property = DayOfWeek.Thursday
+        };
+
+        await using var database = await sqlInstance.Build();
+        await RunQuery(database, query, null, null, false, [entity1, entity2]);
+    }
+
+    [Fact]
+    public async Task Where_enum_notEqual()
+    {
+        var query =
+            """
+            {
+              enumEntities (where: {path: "Property", comparison: notEqual, value: "Thursday"})
+              {
+                id
+              }
+            }
+            """;
+
+        var entity1 = new EnumEntity();
+        var entity2 = new EnumEntity
+        {
+            Property = DayOfWeek.Thursday
+        };
+
+        await using var database = await sqlInstance.Build();
+        await RunQuery(database, query, null, null, false, [entity1, entity2]);
+    }
+
+    [Fact]
+    public async Task Where_string_notEqual()
+    {
+        var query =
+            """
+            {
+              stringEntities (orderBy: {path: "property"}, where: {path: "Property", comparison: notEqual, value: "notValue"})
+              {
+                id, property
+              }
+            }
+            """;
+
+        var entity1 = new StringEntity();
+        var entity2 = new StringEntity
+        {
+            Property = "Value"
+        };
+        var entity3 = new StringEntity
+        {
+            Property = "notValue"
+        };
+
+        await using var database = await sqlInstance.Build();
+        await RunQuery(database, query, null, null, false, [entity1, entity2, entity3]);
+    }
+
+    [Fact]
+    public async Task Where_string_notEqual_diffCase()
+    {
+        var query =
+            """
+            {
+              stringEntities (orderBy: {path: "property"}, where: {path: "Property", comparison: notEqual, value: "NotValue"})
+              {
+                id, property
+              }
+            }
+            """;
+
+        var entity1 = new StringEntity();
+        var entity2 = new StringEntity
+        {
+            Property = "Value"
+        };
+        var entity3 = new StringEntity
+        {
+            Property = "notValue"
+        };
+
+        await using var database = await sqlInstance.Build();
+        await RunQuery(database, query, null, null, false, [entity1, entity2, entity3]);
+    }
+
+    [Fact]
+    public async Task Where_string_contains()
+    {
+        var query =
+            """
+            {
+              stringEntities (orderBy: {path: "property"}, where: {path: "Property", comparison: contains, value: "b" })
+              {
+                id, property
+              }
+            }
+            """;
+
+        var entity1 = new StringEntity();
+        var entity2 = new StringEntity
+        {
+            Property = "a"
+        };
+        var entity3 = new StringEntity
+        {
+            Property = "ab"
+        };
+        var entity4 = new StringEntity
+        {
+            Property = "abc"
+        };
+        var entity5 = new StringEntity
+        {
+            Property = "bc"
+        };
+        var entity6 = new StringEntity
+        {
+            Property = "c"
+        };
+        var entity7 = new StringEntity
+        {
+            Property = "b"
+        };
+        var entity8 = new StringEntity
+        {
+            Property = ""
+        };
+
+        await using var database = await sqlInstance.Build();
+        await RunQuery(database, query, null, null, false, [entity1, entity2, entity3, entity4, entity5, entity6, entity7, entity8]);
+    }
+
+    [Fact]
+    public async Task Where_string_contains_diffCase()
+    {
+        var query =
+            """
+            {
+              stringEntities (orderBy: {path: "property"}, where: {path: "Property", comparison: contains, value: "B" })
+              {
+                id, property
+              }
+            }
+            """;
+
+        var entity1 = new StringEntity();
+        var entity2 = new StringEntity
+        {
+            Property = "a"
+        };
+        var entity3 = new StringEntity
+        {
+            Property = "ab"
+        };
+        var entity4 = new StringEntity
+        {
+            Property = "abc"
+        };
+        var entity5 = new StringEntity
+        {
+            Property = "bc"
+        };
+        var entity6 = new StringEntity
+        {
+            Property = "c"
+        };
+        var entity7 = new StringEntity
+        {
+            Property = "b"
+        };
+        var entity8 = new StringEntity
+        {
+            Property = ""
+        };
+
+        await using var database = await sqlInstance.Build();
+        await RunQuery(database, query, null, null, false, [entity1, entity2, entity3, entity4, entity5, entity6, entity7, entity8]);
+    }
+
+
+    [Fact]
+    public async Task Where_enum_in()
+    {
+        var query =
+            """
+            {
+              enumEntities (where: {path: "Property", comparison: in, value: ["Thursday"]})
+              {
+                id
+              }
+            }
+            """;
+
+        var entity1 = new EnumEntity();
+        var entity2 = new EnumEntity
+        {
+            Property = DayOfWeek.Thursday
+        };
+
+        await using var database = await sqlInstance.Build();
+        await RunQuery(database, query, null, null, false, [entity1, entity2]);
     }
 
     [Fact]
     public async Task Where_time()
     {
-        var query = """
+        var query =
+            """
             {
-              timeEntities (where: {path: 'Property', comparison: equal, value: '10:11 AM'})
+              timeEntities (where: {path: "Property", comparison: equal, value: "10:11 AM"})
               {
                 id
               }
@@ -160,28 +407,71 @@ public partial class IntegrationTests
         };
 
         await using var database = await sqlInstance.Build();
-        await RunQuery(database, query, null, null, false, new object[] { entity1, entity2 });
+        await RunQuery(database, query, null, null, false, [entity1, entity2]);
+    }
+
+    [Fact]
+    public async Task Where_time_notEqual()
+    {
+        var query =
+            """
+            {
+              timeEntities (where: {path: "Property", comparison: notEqual, value: "10:11 AM"})
+              {
+                id
+              }
+            }
+            """;
+
+        var entity1 = new TimeEntity();
+        var entity2 = new TimeEntity
+        {
+            Property = new Time(10, 11)
+        };
+
+        await using var database = await sqlInstance.Build();
+        await RunQuery(database, query, null, null, false, [entity1, entity2]);
     }
 
     [Fact]
     public async Task Where_with_nullable_properties1()
     {
-        var query = "{ withNullableEntities (where: {path: 'Nullable', comparison: equal}){ id } }";
+        var query =
+            """{ withNullableEntities (where: {path: "Nullable", comparison: equal}){ id } }""";
 
         var entity1 = new WithNullableEntity();
         var entity2 = new WithNullableEntity
+
         {
             Nullable = 10
         };
 
         await using var database = await sqlInstance.Build();
-        await RunQuery(database, query, null, null, false, new object[] { entity1, entity2 });
+        await RunQuery(database, query, null, null, false, [entity1, entity2]);
+    }
+
+    [Fact]
+    public async Task Where_with_nullable_properties1_NotEqual()
+    {
+        var query =
+            """{ withNullableEntities (where: {path: "Nullable", comparison: notEqual}){ id } }""";
+
+        var entity1 = new WithNullableEntity();
+        var entity2 = new WithNullableEntity
+
+        {
+            Nullable = 10
+        };
+
+        await using var database = await sqlInstance.Build();
+        await RunQuery(database, query, null, null, false, [entity1, entity2]);
     }
 
     [Fact]
     public async Task Where_with_nullable_properties2()
     {
-        var query = "{ withNullableEntities (where: {path: 'Nullable', comparison: equal, value: '10'}){ id } }";
+        var query =
+            """{ withNullableEntities (where: {path: "Nullable", comparison: equal, value: "10"}){ id } }""";
 
         var entity1 = new WithNullableEntity();
         var entity2 = new WithNullableEntity
@@ -190,13 +480,30 @@ public partial class IntegrationTests
         };
 
         await using var database = await sqlInstance.Build();
-        await RunQuery(database, query, null, null, false, new object[] { entity1, entity2 });
+        await RunQuery(database, query, null, null, false, [entity1, entity2]);
+    }
+
+    [Fact]
+    public async Task Where_with_nullable_properties2_notEqual()
+    {
+        var query =
+            """{ withNullableEntities (where: {path: "Nullable", comparison: notEqual, value: "10"}){ id } }""";
+
+        var entity1 = new WithNullableEntity();
+        var entity2 = new WithNullableEntity
+        {
+            Nullable = 10
+        };
+
+        await using var database = await sqlInstance.Build();
+        await RunQuery(database, query, null, null, false, [entity1, entity2]);
     }
 
     [Fact]
     public async Task Where_null_comparison_value()
     {
-        var query = "{ parentEntities (where: {path: 'Property', comparison: equal}){ id } }";
+        var query =
+            """{ parentEntities (where: {path: "Property", comparison: equal}){ id } }""";
 
         var entity1 = new ParentEntity
         {
@@ -208,13 +515,33 @@ public partial class IntegrationTests
         };
 
         await using var database = await sqlInstance.Build();
-        await RunQuery(database, query, null, null, false, new object[] { entity1, entity2 });
+        await RunQuery(database, query, null, null, false, [entity1, entity2]);
+    }
+
+    [Fact]
+    public async Task Where_null_comparison_value_notEqual()
+    {
+        var query =
+            """{ parentEntities (where: {path: "Property", comparison: notEqual}){ id } }""";
+
+        var entity1 = new ParentEntity
+        {
+            Property = null
+        };
+        var entity2 = new ParentEntity
+        {
+            Property = "Value2"
+        };
+
+        await using var database = await sqlInstance.Build();
+        await RunQuery(database, query, null, null, false, [entity1, entity2]);
     }
 
     [Fact]
     public async Task Take()
     {
-        var query = """
+        var query =
+            """
             {
               parentEntities (take: 1, orderBy: {path: "property"})
               {
@@ -233,13 +560,40 @@ public partial class IntegrationTests
         };
 
         await using var database = await sqlInstance.Build();
-        await RunQuery(database, query, null, null, false, new object[] { entity1, entity2 });
+        await RunQuery(database, query, null, null, false, [entity1, entity2]);
+    }
+
+    [Fact]
+    public async Task TakeNoOrder()
+    {
+        var query =
+            """
+            {
+              parentEntities (take: 1)
+              {
+                property
+              }
+            }
+            """;
+
+        var entity1 = new ParentEntity
+        {
+            Property = "Value1"
+        };
+        var entity2 = new ParentEntity
+        {
+            Property = "Value2"
+        };
+
+        await using var database = await sqlInstance.Build();
+        await RunQuery(database, query, null, null, false, [entity1, entity2]);
     }
 
     [Fact]
     public async Task Skip()
     {
-        var query = """
+        var query =
+            """
             {
               parentEntities (skip: 1, orderBy: {path: "property"})
               {
@@ -258,15 +612,42 @@ public partial class IntegrationTests
         };
 
         await using var database = await sqlInstance.Build();
-        await RunQuery(database, query, null, null, false, new object[] { entity1, entity2 });
+        await RunQuery(database, query, null, null, false, [entity1, entity2]);
+    }
+
+    [Fact]
+    public async Task SkipNoOrder()
+    {
+        var query =
+            """
+            {
+              parentEntities (skip: 1)
+              {
+                property
+              }
+            }
+            """;
+
+        var entity1 = new ParentEntity
+        {
+            Property = "Value1"
+        };
+        var entity2 = new ParentEntity
+        {
+            Property = "Value2"
+        };
+
+        await using var database = await sqlInstance.Build();
+        await RunQuery(database, query, null, null, false, [entity1, entity2]);
     }
 
     [Fact]
     public async Task Connection_first_page()
     {
-        var query = """
+        var query =
+            """
             {
-              parentEntitiesConnection(first:2, after: '0') {
+              parentEntitiesConnection(first:2, after: "0") {
                 totalCount
                 edges {
                   cursor
@@ -289,9 +670,10 @@ public partial class IntegrationTests
     [Fact]
     public async Task Connection_page_back()
     {
-        var query = """
+        var query =
+            """
             {
-              parentEntitiesConnection(last:2, before: '2') {
+              parentEntitiesConnection(last:2, before: "2") {
                 totalCount
                 edges {
                   cursor
@@ -316,11 +698,41 @@ public partial class IntegrationTests
     [Fact]
     public async Task Connection_nested()
     {
-        var query = """
+        var query =
+            """
             {
               parentEntities {
                 id
                 childrenConnection(first:2, after:"2") {
+                  edges {
+                    cursor
+                    node {
+                      id
+                    }
+                  }
+                  pageInfo {
+                      endCursor
+                      hasNextPage
+                    }
+                }
+              }
+            }
+            """;
+        var entities = BuildEntities(8);
+
+        await using var database = await sqlInstance.Build();
+        await RunQuery(database, query, null, null, false, entities.ToArray());
+    }
+
+    [Fact]
+    public async Task Connection_nested_OmitQueryArguments()
+    {
+        var query =
+            """
+            {
+              parentEntities {
+                id
+                childrenConnectionOmitQueryArguments {
                   edges {
                     cursor
                     node {
@@ -347,43 +759,19 @@ public partial class IntegrationTests
         {
             yield return new()
             {
-                Id = Guid.Parse("00000000-0000-0000-0000-00000000000" + index),
+                Id = new("00000000-0000-0000-0000-00000000000" + index),
                 Property = "Value" + index
             };
         }
     }
 
-    [Fact(Skip = "Work out how to eval server side")]
-    public async Task Where_case_sensitive()
-    {
-        var query = """
-            {
-              parentEntities (where: {path: 'Property', comparison: equal, value: 'Value2', case: 'Ordinal' })
-              {
-                property
-              }
-            }
-            """;
-
-        var entity1 = new ParentEntity
-        {
-            Property = "Value1"
-        };
-        var entity2 = new ParentEntity
-        {
-            Property = "Value2"
-        };
-
-        await using var database = await sqlInstance.Build();
-        await RunQuery(database, query, null, null, false, new object[] { entity1, entity2 });
-    }
-
     [Fact]
     public async Task OrderBy()
     {
-        var query = """
+        var query =
+            """
             {
-              parentEntities (orderBy: {path: 'Property'})
+              parentEntities (orderBy: {path: "Property"})
               {
                 property
               }
@@ -400,133 +788,16 @@ public partial class IntegrationTests
         };
 
         await using var database = await sqlInstance.Build();
-        await RunQuery(database, query, null, null, false, new object[] { entity2, entity1 });
-    }
-
-    [Fact]
-    public async Task OrderByCustom()
-    {
-        var query = @"
-{
-  parentEntities (orderBy: {path: 'childrenSum'})
-  {
-    property
-  }
-}";
-
-        var entity1 = new ParentEntity
-        {
-            Property = "Value1",
-            Children = new List<ChildEntity>
-            {
-                new()
-                {
-                    Property = "Value1",
-                    Decimal = 10
-
-                },
-                new()
-                {
-                    Property = "Value2",
-                    Decimal = 2
-                }
-            }
-
-
-        };
-        var entity2 = new ParentEntity
-        {
-            Property = "Value2",
-            Children = new List<ChildEntity>
-            {
-                new()
-                {
-                    Property = "Value1",
-                    Decimal = 3
-                },
-                new()
-                {
-                    Property = "Value2",
-                    Decimal = 4
-                }
-            }
-        };
-
-        await using var database = await sqlInstance.Build();
-        await RunQuery(database, query, null, null, false, new object[] { entity2, entity1 });
-
-    }
-
-    [Fact]
-    public async Task OrderByCustomSecondPosition()
-    {
-        var query = @"
-{
-  parentEntities (orderBy: [{path: 'Property'},{path: 'childrenSum'}])
-  {
-    id
-    property
-    children (orderBy : {path: 'Decimal'}) {
-        id
-        property
-        decimal
-    }
-  }
-}";
-
-        var entity1 = new ParentEntity
-        {
-            Property = "Value A",
-            Children = new List<ChildEntity>
-            {
-                new()
-                {
-                    Property = "Value1",
-                    Decimal = 10
-
-                },
-                new()
-                {
-                    Property = "Value2",
-                    Decimal = 2
-                }
-            }
-
-
-        };
-        var entity2 = new ParentEntity
-        {
-            Property = "Value A",
-            Children = new List<ChildEntity>
-            {
-                new()
-                {
-                    Property = "Value1",
-                    Decimal = 3
-                },
-                new()
-                {
-                    Property = "Value2",
-                    Decimal = 4
-                }
-            }
-        };
-        var entity3 = new ParentEntity
-        {
-            Property = "Value",
-        };
-
-        await using var database = await sqlInstance.Build();
-        await RunQuery(database, query, null, null, false, new object[] { entity2, entity1, entity3 });
-
+        await RunQuery(database, query, null, null, false, [entity2, entity1]);
     }
 
     [Fact]
     public async Task OrderByDescending()
     {
-        var query = """
+        var query =
+            """
             {
-              parentEntities (orderBy: {path: 'Property', descending: true})
+              parentEntities (orderBy: {path: "Property", descending: true})
               {
                 property
               }
@@ -543,15 +814,106 @@ public partial class IntegrationTests
         };
 
         await using var database = await sqlInstance.Build();
-        await RunQuery(database, query, null, null, false, new object[] { entity1, entity2 });
+        await RunQuery(database, query, null, null, false, [entity1, entity2]);
+    }
+
+    [Fact]
+    public async Task OrderByNullable()
+    {
+        var query =
+            """
+            {
+              parentEntities (orderBy: {path: "Property"})
+              {
+                property
+              }
+            }
+            """;
+
+        var entity1 = new ParentEntity
+        {
+            Property = "Value1"
+        };
+        var entity2 = new ParentEntity();
+
+        await using var database = await sqlInstance.Build();
+        await RunQuery(database, query, null, null, false, [entity1, entity2]);
+    }
+
+    [Fact]
+    public async Task OrderByNested()
+    {
+        var query =
+            """
+            {
+              childEntities (orderBy: {path: "Parent.Property"})
+              {
+                property
+              }
+            }
+            """;
+
+        var parent1 = new ParentEntity
+        {
+            Property = "Value1"
+        };
+        var entity1 = new ChildEntity
+        {
+            Property = "Value2",
+            Parent = parent1
+        };
+        var parent2 = new ParentEntity
+        {
+            Property = "Value3"
+        };
+        var entity2 = new ChildEntity
+        {
+            Property = "Value4",
+            Parent = parent2
+        };
+
+        await using var database = await sqlInstance.Build();
+        await RunQuery(database, query, null, null, false, [parent1, parent2, entity1, entity2]);
+    }
+
+    [Fact]
+    public async Task OrderByNestedNullable()
+    {
+        var query =
+            """
+            {
+              childEntities (orderBy: {path: "Parent.Property"})
+              {
+                property
+              }
+            }
+            """;
+
+        var parent = new ParentEntity
+        {
+            Property = "Value1"
+        };
+        var entity1 = new ChildEntity
+        {
+            Property = "Value2",
+            Parent = parent
+        };
+        var entity2 = new ChildEntity
+        {
+            Property = "Value3"
+        };
+
+        await using var database = await sqlInstance.Build();
+        await RunQuery(database, query, null, null, false, [parent, entity1, entity2]);
     }
 
     [Fact]
     public async Task Like()
     {
-        var query = """
+        var query =
+            """
             {
-              parentEntities (where: {path: 'Property', comparison: like, value: 'value2'})
+              parentEntities (where: {path: "Property", comparison: like, value: "value2"})
               {
                 property
               }
@@ -568,16 +930,17 @@ public partial class IntegrationTests
         };
 
         await using var database = await sqlInstance.Build();
-        await RunQuery(database, query, null, null, false, new object[] { entity1, entity2 });
+        await RunQuery(database, query, null, null, false, [entity1, entity2]);
     }
 
     [Fact]
     public async Task Where_with_variable()
     {
-        var query = """
+        var query =
+            """
             query ($value: String!)
             {
-              parentEntities (where: {path: 'Property', comparison: equal, value: [$value]})
+              parentEntities (where: {path: "Property", comparison: equal, value: [$value]})
               {
                 property
               }
@@ -593,15 +956,54 @@ public partial class IntegrationTests
             Property = "Value2"
         };
 
-        var inputs = new Inputs(new Dictionary<string, object?> { { "value", "value2" } });
+        var inputs = new Inputs(new Dictionary<string, object?>
+        {
+            {
+                "value", "value2"
+            }
+        });
         await using var database = await sqlInstance.Build();
-        await RunQuery(database, query, inputs, null, false, new object[] { entity1, entity2 });
+        await RunQuery(database, query, inputs, null, false, [entity1, entity2]);
+    }
+
+    [Fact]
+    public async Task Where_with_variable_notEqual()
+    {
+        var query =
+            """
+            query ($value: String!)
+            {
+              parentEntities (where: {path: "Property", comparison: notEqual, value: [$value]})
+              {
+                property
+              }
+            }
+            """;
+
+        var entity1 = new ParentEntity
+        {
+            Property = "Value1"
+        };
+        var entity2 = new ParentEntity
+        {
+            Property = "Value2"
+        };
+
+        var inputs = new Inputs(new Dictionary<string, object?>
+        {
+            {
+                "value", "value2"
+            }
+        });
+        await using var database = await sqlInstance.Build();
+        await RunQuery(database, query, inputs, null, false, [entity1, entity2]);
     }
 
     [Fact]
     public async Task CustomType()
     {
-        var query = """
+        var query =
+            """
             {
               customType (orderBy: {path: "property"})
               {
@@ -620,13 +1022,14 @@ public partial class IntegrationTests
         };
 
         await using var database = await sqlInstance.Build();
-        await RunQuery(database, query, null, null, false, new object[] { entity1, entity2 });
+        await RunQuery(database, query, null, null, false, [entity1, entity2]);
     }
 
     [Fact]
     public async Task Single_NotFound()
     {
-        var query = """
+        var query =
+            """
             {
               parentEntity(id: "00000000-0000-0000-0000-000000000001") {
                 property
@@ -634,13 +1037,29 @@ public partial class IntegrationTests
             }
             """;
         await using var database = await sqlInstance.Build();
-        await RunQuery(database, query, null, null, false, new object[] { });
+        await RunQuery(database, query, null, null, false, []);
+    }
+
+    [Fact]
+    public async Task First_NotFound()
+    {
+        var query =
+            """
+            {
+              parentEntityFirst(id: "00000000-0000-0000-0000-000000000001") {
+                property
+              }
+            }
+            """;
+        await using var database = await sqlInstance.Build();
+        await RunQuery(database, query, null, null, false, []);
     }
 
     [Fact]
     public async Task Single_Found_NoTracking()
     {
-        var query = """
+        var query =
+            """
             {
               parentEntity(id: "00000000-0000-0000-0000-000000000001") {
                 property
@@ -649,49 +1068,48 @@ public partial class IntegrationTests
             """;
         var entity1 = new ParentEntity
         {
-            Id = Guid.Parse("00000000-0000-0000-0000-000000000001"),
+            Id = new("00000000-0000-0000-0000-000000000001"),
             Property = "Value1"
         };
         var entity2 = new ParentEntity
         {
-            Id = Guid.Parse("00000000-0000-0000-0000-000000000002"),
+            Id = new("00000000-0000-0000-0000-000000000002"),
             Property = "Value2"
         };
         await using var database = await sqlInstance.Build();
-        await RunQuery(database, query, null, null, true, new object[] { entity1, entity2 });
+        await RunQuery(database, query, null, null, true, [entity1, entity2]);
     }
 
-
     [Fact]
-    public async Task Single_Found_Large_Text_NoAsync()
+    public async Task First_Found_NoTracking()
     {
-        var query = """
+        var query =
+            """
             {
-              parentEntity(id: "00000000-0000-0000-0000-000000000001") {
-                id
+              parentEntityFirst(id: "00000000-0000-0000-0000-000000000001") {
+                property
               }
             }
             """;
-        var largeString = new StringBuilder().Append('a', 3 * 1024 * 1024);
         var entity1 = new ParentEntity
         {
-            Id = Guid.Parse("00000000-0000-0000-0000-000000000001"),
-            Property = largeString.ToString()
+            Id = new("00000000-0000-0000-0000-000000000001"),
+            Property = "Value1"
         };
         var entity2 = new ParentEntity
         {
-            Id = Guid.Parse("00000000-0000-0000-0000-000000000002"),
+            Id = new("00000000-0000-0000-0000-000000000002"),
             Property = "Value2"
         };
-
         await using var database = await sqlInstance.Build();
-        await RunQuery(database, query, null, null, false, new object[] { entity1, entity2 }, true);
+        await RunQuery(database, query, null, null, true, [entity1, entity2]);
     }
 
     [Fact]
     public async Task Owned()
     {
-        var query = """
+        var query =
+            """
             {
               ownedParent(id: "00000000-0000-0000-0000-000000000001") {
                 property
@@ -703,19 +1121,26 @@ public partial class IntegrationTests
             """;
         var entity1 = new OwnedParent
         {
-            Id = Guid.Parse("00000000-0000-0000-0000-000000000001"),
+            Id = new("00000000-0000-0000-0000-000000000001"),
             Property = "Parent value",
-            Child1 = new() { Property = "Value1" },
-            Child2 = new() { Property = "Value2" }
+            Child1 = new()
+            {
+                Property = "Value1"
+            },
+            Child2 = new()
+            {
+                Property = "Value2"
+            }
         };
         await using var database = await sqlInstance.Build();
-        await RunQuery(database, query, null, null, false, new object[] { entity1 });
+        await RunQuery(database, query, null, null, false, [entity1]);
     }
 
     [Fact]
     public async Task Explicit_Null()
     {
-        var query = """
+        var query =
+            """
             {
               parentEntity(id: null) {
                 property
@@ -723,13 +1148,14 @@ public partial class IntegrationTests
             }
             """;
         await using var database = await sqlInstance.Build();
-        await RunQuery(database, query, null, null, false, new object[] { });
+        await RunQuery(database, query, null, null, false, []);
     }
 
     [Fact]
     public async Task Single_Found()
     {
-        var query = """
+        var query =
+            """
             {
               parentEntity(id: "00000000-0000-0000-0000-000000000001") {
                 property
@@ -738,22 +1164,168 @@ public partial class IntegrationTests
             """;
         var entity1 = new ParentEntity
         {
-            Id = Guid.Parse("00000000-0000-0000-0000-000000000001"),
+            Id = new("00000000-0000-0000-0000-000000000001"),
             Property = "Value1"
         };
         var entity2 = new ParentEntity
         {
-            Id = Guid.Parse("00000000-0000-0000-0000-000000000002"),
+            Id = new("00000000-0000-0000-0000-000000000002"),
             Property = "Value2"
         };
         await using var database = await sqlInstance.Build();
-        await RunQuery(database, query, null, null, false, new object[] { entity1, entity2 });
+        await RunQuery(database, query, null, null, false, [entity1, entity2]);
+    }
+
+    [Fact]
+    public async Task First_Found()
+    {
+        var query =
+            """
+            {
+              parentEntityFirst(id: "00000000-0000-0000-0000-000000000001") {
+                property
+              }
+            }
+            """;
+        var entity1 = new ParentEntity
+        {
+            Id = new("00000000-0000-0000-0000-000000000001"),
+            Property = "Value1"
+        };
+        var entity2 = new ParentEntity
+        {
+            Id = new("00000000-0000-0000-0000-000000000002"),
+            Property = "Value2"
+        };
+        await using var database = await sqlInstance.Build();
+        await RunQuery(database, query, null, null, false, [entity1, entity2]);
+    }
+
+    [Fact]
+    public async Task Single_NoArgs()
+    {
+        var query =
+            """
+            {
+              parentEntityWithNoArgs {
+                property
+                children
+                {
+                  property
+                }
+              }
+            }
+            """;
+        var entity1 = new ParentEntity
+        {
+            Id = new("00000000-0000-0000-0000-000000000001"),
+            Property = "Value1"
+        };
+        var entity2 = new ChildEntity
+        {
+            Property = "Value2",
+            Parent = entity1
+        };
+
+        await using var database = await sqlInstance.Build();
+        await RunQuery(database, query, null, null, false, [entity1, entity2]);
+    }
+
+    [Fact]
+    public async Task First_NoArgs()
+    {
+        var query =
+            """
+            {
+              parentEntityWithNoArgsFirst {
+                property
+                children
+                {
+                  property
+                }
+              }
+            }
+            """;
+        var entity1 = new ParentEntity
+        {
+            Id = new("00000000-0000-0000-0000-000000000001"),
+            Property = "Value1"
+        };
+        var entity2 = new ChildEntity
+        {
+            Property = "Value2",
+            Parent = entity1
+        };
+
+        await using var database = await sqlInstance.Build();
+        await RunQuery(database, query, null, null, false, [entity1, entity2]);
+    }
+
+    [Fact]
+    public async Task Single_IdOnly()
+    {
+        var query =
+            """
+            {
+              parentEntityIdOnly(id: "00000000-0000-0000-0000-000000000001") {
+                property
+                children
+                {
+                  property
+                }
+              }
+            }
+            """;
+        var entity1 = new ParentEntity
+        {
+            Id = new("00000000-0000-0000-0000-000000000001"),
+            Property = "Value1"
+        };
+        var entity2 = new ChildEntity
+        {
+            Property = "Value2",
+            Parent = entity1
+        };
+
+        await using var database = await sqlInstance.Build();
+        await RunQuery(database, query, null, null, false, [entity1, entity2]);
+    }
+
+    [Fact]
+    public async Task First_IdOnly()
+    {
+        var query =
+            """
+            {
+              parentEntityIdOnlyFirst(id: "00000000-0000-0000-0000-000000000001") {
+                property
+                children
+                {
+                  property
+                }
+              }
+            }
+            """;
+        var entity1 = new ParentEntity
+        {
+            Id = new("00000000-0000-0000-0000-000000000001"),
+            Property = "Value1"
+        };
+        var entity2 = new ChildEntity
+        {
+            Property = "Value2",
+            Parent = entity1
+        };
+
+        await using var database = await sqlInstance.Build();
+        await RunQuery(database, query, null, null, false, [entity1, entity2]);
     }
 
     [Fact]
     public async Task SingleNullable_NotFound()
     {
-        var query = """
+        var query =
+            """
             {
               parentEntityNullable(id: "00000000-0000-0000-0000-000000000001") {
                 property
@@ -761,13 +1333,29 @@ public partial class IntegrationTests
             }
             """;
         await using var database = await sqlInstance.Build();
-        await RunQuery(database, query, null, null, false, new object[] { });
+        await RunQuery(database, query, null, null, false, []);
+    }
+
+    [Fact]
+    public async Task FirstNullable_NotFound()
+    {
+        var query =
+            """
+            {
+              parentEntityNullableFirst(id: "00000000-0000-0000-0000-000000000001") {
+                property
+              }
+            }
+            """;
+        await using var database = await sqlInstance.Build();
+        await RunQuery(database, query, null, null, false, []);
     }
 
     [Fact]
     public async Task SingleNullable_Found()
     {
-        var query = """
+        var query =
+            """
             {
               parentEntityNullable(id: "00000000-0000-0000-0000-000000000001") {
                 property
@@ -776,22 +1364,48 @@ public partial class IntegrationTests
             """;
         var entity1 = new ParentEntity
         {
-            Id = Guid.Parse("00000000-0000-0000-0000-000000000001"),
+            Id = new("00000000-0000-0000-0000-000000000001"),
             Property = "Value1"
         };
         var entity2 = new ParentEntity
         {
-            Id = Guid.Parse("00000000-0000-0000-0000-000000000002"),
+            Id = new("00000000-0000-0000-0000-000000000002"),
             Property = "Value2"
         };
         await using var database = await sqlInstance.Build();
-        await RunQuery(database, query, null, null, false, new object[] { entity1, entity2 });
+        await RunQuery(database, query, null, null, false, [entity1, entity2]);
+    }
+
+    [Fact]
+    public async Task FirstNullable_Found()
+    {
+        var query =
+            """
+            {
+              parentEntityNullableFirst(id: "00000000-0000-0000-0000-000000000001") {
+                property
+              }
+            }
+            """;
+        var entity1 = new ParentEntity
+        {
+            Id = new("00000000-0000-0000-0000-000000000001"),
+            Property = "Value1"
+        };
+        var entity2 = new ParentEntity
+        {
+            Id = new("00000000-0000-0000-0000-000000000002"),
+            Property = "Value2"
+        };
+        await using var database = await sqlInstance.Build();
+        await RunQuery(database, query, null, null, false, [entity1, entity2]);
     }
 
     [Fact]
     public async Task SingleParent_Child_mutation()
     {
-        var query = """
+        var query =
+            """
             mutation {
               parentEntityMutation(id: "00000000-0000-0000-0000-000000000001") {
                 property
@@ -805,7 +1419,7 @@ public partial class IntegrationTests
 
         var entity1 = new ParentEntity
         {
-            Id = Guid.Parse("00000000-0000-0000-0000-000000000001"),
+            Id = new("00000000-0000-0000-0000-000000000001"),
             Property = "Value1"
         };
         var entity2 = new ChildEntity
@@ -832,13 +1446,62 @@ public partial class IntegrationTests
         entity4.Children.Add(entity5);
 
         await using var database = await sqlInstance.Build();
-        await RunQuery(database, query, null, null, false, new object[] { entity1, entity2, entity3, entity4, entity5 });
+        await RunQuery(database, query, null, null, false, [entity1, entity2, entity3, entity4, entity5]);
+    }
+
+    [Fact]
+    public async Task FirstParent_Child_mutation()
+    {
+        var query =
+            """
+            mutation {
+              parentEntityMutationFirst(id: "00000000-0000-0000-0000-000000000001") {
+                property
+                children(orderBy: {path: "property"})
+                {
+                  property
+                }
+              }
+            }
+            """;
+
+        var entity1 = new ParentEntity
+        {
+            Id = new("00000000-0000-0000-0000-000000000001"),
+            Property = "Value1"
+        };
+        var entity2 = new ChildEntity
+        {
+            Property = "Value2",
+            Parent = entity1
+        };
+        var entity3 = new ChildEntity
+        {
+            Property = "Value3",
+            Parent = entity1
+        };
+        entity1.Children.Add(entity2);
+        entity1.Children.Add(entity3);
+        var entity4 = new ParentEntity
+        {
+            Property = "Value4"
+        };
+        var entity5 = new ChildEntity
+        {
+            Property = "Value5",
+            Parent = entity4
+        };
+        entity4.Children.Add(entity5);
+
+        await using var database = await sqlInstance.Build();
+        await RunQuery(database, query, null, null, false, [entity1, entity2, entity3, entity4, entity5]);
     }
 
     [Fact]
     public async Task SingleParent_Child()
     {
-        var query = """
+        var query =
+            """
             {
               parentEntity(id: "00000000-0000-0000-0000-000000000001") {
                 property
@@ -852,7 +1515,7 @@ public partial class IntegrationTests
 
         var entity1 = new ParentEntity
         {
-            Id = Guid.Parse("00000000-0000-0000-0000-000000000001"),
+            Id = new("00000000-0000-0000-0000-000000000001"),
             Property = "Value1"
         };
         var entity2 = new ChildEntity
@@ -879,13 +1542,62 @@ public partial class IntegrationTests
         entity4.Children.Add(entity5);
 
         await using var database = await sqlInstance.Build();
-        await RunQuery(database, query, null, null, false, new object[] { entity1, entity2, entity3, entity4, entity5 });
+        await RunQuery(database, query, null, null, false, [entity1, entity2, entity3, entity4, entity5]);
+    }
+
+    [Fact]
+    public async Task FirstParent_Child()
+    {
+        var query =
+            """
+            {
+              parentEntityFirst(id: "00000000-0000-0000-0000-000000000001") {
+                property
+                children(orderBy: {path: "property"})
+                {
+                  property
+                }
+              }
+            }
+            """;
+
+        var entity1 = new ParentEntity
+        {
+            Id = new("00000000-0000-0000-0000-000000000001"),
+            Property = "Value1"
+        };
+        var entity2 = new ChildEntity
+        {
+            Property = "Value2",
+            Parent = entity1
+        };
+        var entity3 = new ChildEntity
+        {
+            Property = "Value3",
+            Parent = entity1
+        };
+        entity1.Children.Add(entity2);
+        entity1.Children.Add(entity3);
+        var entity4 = new ParentEntity
+        {
+            Property = "Value4"
+        };
+        var entity5 = new ChildEntity
+        {
+            Property = "Value5",
+            Parent = entity4
+        };
+        entity4.Children.Add(entity5);
+
+        await using var database = await sqlInstance.Build();
+        await RunQuery(database, query, null, null, false, [entity1, entity2, entity3, entity4, entity5]);
     }
 
     [Fact]
     public async Task SingleParent_Child_WithFragment()
     {
-        var query = """
+        var query =
+            """
             {
               parentEntity(id: "00000000-0000-0000-0000-000000000001") {
                 ...parentEntityFields
@@ -905,7 +1617,7 @@ public partial class IntegrationTests
 
         var entity1 = new ParentEntity
         {
-            Id = Guid.Parse("00000000-0000-0000-0000-000000000001"),
+            Id = new("00000000-0000-0000-0000-000000000001"),
             Property = "Value1"
         };
         var entity2 = new ChildEntity
@@ -932,15 +1644,70 @@ public partial class IntegrationTests
         entity4.Children.Add(entity5);
 
         await using var database = await sqlInstance.Build();
-        await RunQuery(database, query, null, null, false, new object[] { entity1, entity2, entity3, entity4, entity5 });
+        await RunQuery(database, query, null, null, false, [entity1, entity2, entity3, entity4, entity5]);
+    }
+
+    [Fact]
+    public async Task FirstParent_Child_WithFragment()
+    {
+        var query =
+            """
+            {
+              parentEntityFirst(id: "00000000-0000-0000-0000-000000000001") {
+                ...parentEntityFields
+              }
+            }
+            fragment parentEntityFields on Parent {
+              property
+              children(orderBy: {path: "property"})
+              {
+                ...childEntityFields
+              }
+            }
+            fragment childEntityFields on Child {
+              property
+            }
+            """;
+
+        var entity1 = new ParentEntity
+        {
+            Id = new("00000000-0000-0000-0000-000000000001"),
+            Property = "Value1"
+        };
+        var entity2 = new ChildEntity
+        {
+            Property = "Value2",
+            Parent = entity1
+        };
+        var entity3 = new ChildEntity
+        {
+            Property = "Value3",
+            Parent = entity1
+        };
+        entity1.Children.Add(entity2);
+        entity1.Children.Add(entity3);
+        var entity4 = new ParentEntity
+        {
+            Property = "Value4"
+        };
+        var entity5 = new ChildEntity
+        {
+            Property = "Value5",
+            Parent = entity4
+        };
+        entity4.Children.Add(entity5);
+
+        await using var database = await sqlInstance.Build();
+        await RunQuery(database, query, null, null, false, [entity1, entity2, entity3, entity4, entity5]);
     }
 
     [Fact]
     public async Task Where()
     {
-        var query = """
+        var query =
+            """
             {
-              parentEntities (where: {path: 'Property', comparison: equal, value: 'value2'})
+              parentEntities (where: {path: "Property", comparison: equal, value: "value2"})
               {
                 property
               }
@@ -957,15 +1724,42 @@ public partial class IntegrationTests
         };
 
         await using var database = await sqlInstance.Build();
-        await RunQuery(database, query, null, null, false, new object[] { entity1, entity2 });
+        await RunQuery(database, query, null, null, false, [entity1, entity2]);
+    }
+
+    [Fact]
+    public async Task Where_notEqual()
+    {
+        var query =
+            """
+            {
+              parentEntities (where: {path: "Property", comparison: notEqual, value: "value2"})
+              {
+                property
+              }
+            }
+            """;
+
+        var entity1 = new ParentEntity
+        {
+            Property = "Value1"
+        };
+        var entity2 = new ParentEntity
+        {
+            Property = "Value2"
+        };
+
+        await using var database = await sqlInstance.Build();
+        await RunQuery(database, query, null, null, false, [entity1, entity2]);
     }
 
     [Fact]
     public async Task Where_default_comparison()
     {
-        var query = """
+        var query =
+            """
             {
-              parentEntities (where: {path: 'Property', value: 'value2'})
+              parentEntities (where: {path: "Property", value: "value2"})
               {
                 property
               }
@@ -982,40 +1776,16 @@ public partial class IntegrationTests
         };
 
         await using var database = await sqlInstance.Build();
-        await RunQuery(database, query, null, null, false, new object[] { entity1, entity2 });
-    }
-
-    [Fact(Skip = "Work out how to eval server side")]
-    public async Task In_case_sensitive()
-    {
-        var query = """
-            {
-              parentEntities (where: {path: 'Property', comparison: in, value: 'Value2', case: 'Ordinal' })
-              {
-                property
-              }
-            }
-            """;
-
-        var entity1 = new ParentEntity
-        {
-            Property = "Value1"
-        };
-        var entity2 = new ParentEntity
-        {
-            Property = "Value2"
-        };
-
-        await using var database = await sqlInstance.Build();
-        await RunQuery(database, query, null, null, false, new object[] { entity1, entity2 });
+        await RunQuery(database, query, null, null, false, [entity1, entity2]);
     }
 
     [Fact]
     public async Task Id()
     {
-        var query = """
+        var query =
+            """
             {
-              parentEntities (ids: '00000000-0000-0000-0000-000000000001')
+              parentEntities (ids: "00000000-0000-0000-0000-000000000001")
               {
                 property
               }
@@ -1024,7 +1794,7 @@ public partial class IntegrationTests
 
         var entity1 = new ParentEntity
         {
-            Id = Guid.Parse("00000000-0000-0000-0000-000000000001"),
+            Id = new("00000000-0000-0000-0000-000000000001"),
             Property = "Value1"
         };
         var entity2 = new ParentEntity
@@ -1033,15 +1803,16 @@ public partial class IntegrationTests
         };
 
         await using var database = await sqlInstance.Build();
-        await RunQuery(database, query, null, null, false, new object[] { entity1, entity2 });
+        await RunQuery(database, query, null, null, false, [entity1, entity2]);
     }
 
     [Fact]
     public async Task NamedId()
     {
-        var query = """
+        var query =
+            """
             {
-              namedEntities (ids: '00000000-0000-0000-0000-000000000001')
+              namedEntities (ids: "00000000-0000-0000-0000-000000000001")
               {
                 property
               }
@@ -1050,7 +1821,7 @@ public partial class IntegrationTests
 
         var entity1 = new NamedIdEntity
         {
-            NamedId = Guid.Parse("00000000-0000-0000-0000-000000000001"),
+            NamedId = new("00000000-0000-0000-0000-000000000001"),
             Property = "Value1"
         };
         var entity2 = new NamedIdEntity
@@ -1059,16 +1830,17 @@ public partial class IntegrationTests
         };
 
         await using var database = await sqlInstance.Build();
-        await RunQuery(database, query, null, null, false, new object[] { entity1, entity2 });
+        await RunQuery(database, query, null, null, false, [entity1, entity2]);
     }
 
     [Fact]
     public async Task Id_multiple()
     {
-        var query = """
+        var query =
+            """
             {
               parentEntities
-              (ids: ['00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000002'])
+              (ids: ["00000000-0000-0000-0000-000000000001", "00000000-0000-0000-0000-000000000002"])
               {
                 property
               }
@@ -1077,30 +1849,31 @@ public partial class IntegrationTests
 
         var entity1 = new ParentEntity
         {
-            Id = Guid.Parse("00000000-0000-0000-0000-000000000001"),
+            Id = new("00000000-0000-0000-0000-000000000001"),
             Property = "Value1"
         };
         var entity2 = new ParentEntity
         {
-            Id = Guid.Parse("00000000-0000-0000-0000-000000000002"),
+            Id = new("00000000-0000-0000-0000-000000000002"),
             Property = "Value2"
         };
         var entity3 = new ParentEntity
         {
-            Id = Guid.Parse("00000000-0000-0000-0000-000000000003"),
+            Id = new("00000000-0000-0000-0000-000000000003"),
             Property = "Value3"
         };
 
         await using var database = await sqlInstance.Build();
-        await RunQuery(database, query, null, null, false, new object[] { entity1, entity2, entity3 });
+        await RunQuery(database, query, null, null, false, [entity1, entity2, entity3]);
     }
 
     [Fact]
     public async Task In()
     {
-        var query = """
+        var query =
+            """
             {
-              parentEntities (where: {path: 'Property', comparison: in, value: 'value2'})
+              parentEntities (where: {path: "Property", comparison: in, value: "value2"})
               {
                 property
               }
@@ -1117,16 +1890,17 @@ public partial class IntegrationTests
         };
 
         await using var database = await sqlInstance.Build();
-        await RunQuery(database, query, null, null, false, new object[] { entity1, entity2 });
+        await RunQuery(database, query, null, null, false, [entity1, entity2]);
     }
 
     [Fact]
     public async Task In_multiple()
     {
-        var query = """
+        var query =
+            """
             {
               parentEntities
-              (where: {path: 'Property', comparison: in, value: ['Value1', 'Value2']}, orderBy: {path: "property"})
+              (where: {path: "Property", comparison: in, value: ["Value1", "Value2"]}, orderBy: {path: "property"})
               {
                 property
               }
@@ -1143,15 +1917,16 @@ public partial class IntegrationTests
         };
 
         await using var database = await sqlInstance.Build();
-        await RunQuery(database, query, null, null, false, new object[] { entity1, entity2 });
+        await RunQuery(database, query, null, null, false, [entity1, entity2]);
     }
 
     [Fact(Skip = "Work out why include is not used")]
     public async Task Connection_parent_child()
     {
-        var query = """
+        var query =
+            """
             {
-              parentEntitiesConnection(first:2, after: '0') {
+              parentEntitiesConnection(first:2, after: "0") {
                 totalCount
                 edges {
                   cursor
@@ -1198,13 +1973,14 @@ public partial class IntegrationTests
         entity4.Children.Add(entity5);
 
         await using var database = await sqlInstance.Build();
-        await RunQuery(database, query, null, null, false, new object[] { entity1, entity2, entity3, entity4, entity5 });
+        await RunQuery(database, query, null, null, false, [entity1, entity2, entity3, entity4, entity5]);
     }
 
     [Fact]
     public async Task Child_parent_with_alias()
     {
-        var query = """
+        var query =
+            """
             {
               childEntities (orderBy: {path: "property"})
               {
@@ -1244,13 +2020,14 @@ public partial class IntegrationTests
         entity4.Children.Add(entity5);
 
         await using var database = await sqlInstance.Build();
-        await RunQuery(database, query, null, null, false, new object[] { entity1, entity2, entity3, entity4, entity5 });
+        await RunQuery(database, query, null, null, false, [entity1, entity2, entity3, entity4, entity5]);
     }
 
     [Fact(Skip = "TODO")]
     public async Task Multiple_nested_AddQueryField()
     {
-        var query = """
+        var query =
+            """
             {
               queryFieldWithInclude
               {
@@ -1269,13 +2046,14 @@ public partial class IntegrationTests
         level1.IncludeNonQueryableA = level2;
 
         await using var database = await sqlInstance.Build();
-        await RunQuery(database, query, null, null, false, new object[] { level1, level2 });
+        await RunQuery(database, query, null, null, false, [level1, level2]);
     }
 
     [Fact(Skip = "fix order")]
     public async Task Skip_level()
     {
-        var query = """
+        var query =
+            """
             {
               skipLevel
               {
@@ -1301,13 +2079,14 @@ public partial class IntegrationTests
         };
 
         var database = await sqlInstance.Build();
-        await RunQuery(database, query, null, null, false, new object[] { level1, level2, level3 });
+        await RunQuery(database, query, null, null, false, [level1, level2, level3]);
     }
 
     [Fact]
     public async Task Multiple_nested()
     {
-        var query = """
+        var query =
+            """
             {
               level1Entities
               {
@@ -1336,15 +2115,16 @@ public partial class IntegrationTests
         };
 
         await using var database = await sqlInstance.Build();
-        await RunQuery(database, query, null, null, false, new object[] { level1, level2, level3 });
+        await RunQuery(database, query, null, null, false, [level1, level2, level3]);
     }
 
     [Fact]
     public async Task Null_on_nested()
     {
-        var query = """
+        var query =
+            """
             {
-              level1Entities(where: {path: 'Level2Entity.Level3EntityId', comparison: equal, value: '00000000-0000-0000-0000-000000000003'})
+              level1Entities(where: {path: "Level2Entity.Level3EntityId", comparison: equal, value: "00000000-0000-0000-0000-000000000003"})
               {
                 level2Entity
                 {
@@ -1359,7 +2139,7 @@ public partial class IntegrationTests
 
         var level3a = new Level3Entity
         {
-            Id = Guid.Parse("00000000-0000-0000-0000-000000000003"),
+            Id = new("00000000-0000-0000-0000-000000000003"),
             Property = "Valuea"
         };
         var level2a = new Level2Entity
@@ -1378,13 +2158,57 @@ public partial class IntegrationTests
         };
 
         await using var database = await sqlInstance.Build();
-        await RunQuery(database, query, null, null, false, new object[] { level1b, level2b, level1a, level2a, level3a });
+        await RunQuery(database, query, null, null, false, [level1b, level2b, level1a, level2a, level3a]);
+    }
+
+    [Fact]
+    public async Task Null_on_nested_notEqual()
+    {
+        var query =
+            """
+            {
+              level1Entities(where: {path: "Level2Entity.Level3EntityId", comparison: notEqual, value: "00000000-0000-0000-0000-000000000003"})
+              {
+                level2Entity
+                {
+                  level3Entity
+                  {
+                    property
+                  }
+                }
+              }
+            }
+            """;
+
+        var level3a = new Level3Entity
+        {
+            Id = new("00000000-0000-0000-0000-000000000003"),
+            Property = "Valuea"
+        };
+        var level2a = new Level2Entity
+        {
+            Level3Entity = level3a
+        };
+        var level1a = new Level1Entity
+        {
+            Level2Entity = level2a
+        };
+
+        var level2b = new Level2Entity();
+        var level1b = new Level1Entity
+        {
+            Level2Entity = level2b
+        };
+
+        await using var database = await sqlInstance.Build();
+        await RunQuery(database, query, null, null, false, [level1b, level2b, level1a, level2a, level3a]);
     }
 
     [Fact]
     public async Task Query_Cyclic()
     {
-        var query = """
+        var query =
+            """
             {
               childEntities (orderBy: {path: "property"})
               {
@@ -1433,13 +2257,14 @@ public partial class IntegrationTests
         entity4.Children.Add(entity5);
 
         await using var database = await sqlInstance.Build();
-        await RunQuery(database, query, null, null, false, new object[] { entity1, entity2, entity3, entity4, entity5 });
+        await RunQuery(database, query, null, null, false, [entity1, entity2, entity3, entity4, entity5]);
     }
 
     [Fact]
     public async Task Query_NoTracking()
     {
-        var query = """
+        var query =
+            """
             {
               childEntities (orderBy: {path: "property"})
               {
@@ -1480,60 +2305,14 @@ public partial class IntegrationTests
         entity4.Children.Add(entity5);
 
         await using var database = await sqlInstance.Build();
-        await RunQuery(database, query, null, null, true, new object[] { entity1, entity2, entity3, entity4, entity5 });
-    }
-
-
-    [Fact]
-    public async Task Query_Large_Text_NoAsync()
-    {
-        var query = """
-            {
-              childEntities (orderBy: {path: "property"})
-              {
-                parent
-                {
-                  property
-                }
-              }
-            }
-            """;
-        var largeString = new StringBuilder().Append('a', 3 * 1024 * 1024);
-        var entity1 = new ParentEntity
-        {
-            Property = "Value1"
-        };
-        var entity2 = new ChildEntity
-        {
-            Property = largeString.ToString(),
-            Parent = entity1
-        };
-        var entity3 = new ChildEntity
-        {
-            Property = "Value3",
-            Parent = entity1
-        };
-        entity1.Children.Add(entity2);
-        entity1.Children.Add(entity3);
-        var entity4 = new ParentEntity
-        {
-            Property = "Value4"
-        };
-        var entity5 = new ChildEntity
-        {
-            Property = "Value5",
-            Parent = entity4
-        };
-        entity4.Children.Add(entity5);
-
-        await using var database = await sqlInstance.Build();
-        await RunQuery(database, query, null, null, false, new object[] { entity1, entity2, entity3, entity4, entity5 }, true);
+        await RunQuery(database, query, null, null, true, [entity1, entity2, entity3, entity4, entity5]);
     }
 
     [Fact]
     public async Task Child_parent()
     {
-        var query = """
+        var query =
+            """
             {
               childEntities (orderBy: {path: "property"})
               {
@@ -1574,15 +2353,16 @@ public partial class IntegrationTests
         entity4.Children.Add(entity5);
 
         await using var database = await sqlInstance.Build();
-        await RunQuery(database, query, null, null, false, new object[] { entity1, entity2, entity3, entity4, entity5 });
+        await RunQuery(database, query, null, null, false, [entity1, entity2, entity3, entity4, entity5]);
     }
 
     [Fact]
     public async Task With_null_navigation_property()
     {
-        var query = """
+        var query =
+            """
             {
-              childEntities(where: {path: 'ParentId', comparison: equal, value: '00000000-0000-0000-0000-000000000001'}, orderBy: {path: "property"})
+              childEntities(where: {path: "ParentId", comparison: equal, value: "00000000-0000-0000-0000-000000000001"}, orderBy: {path: "property"})
               {
                 property
                 parent
@@ -1595,7 +2375,7 @@ public partial class IntegrationTests
 
         var entity1 = new ParentEntity
         {
-            Id = Guid.Parse("00000000-0000-0000-0000-000000000001"),
+            Id = new("00000000-0000-0000-0000-000000000001"),
             Property = "Value1"
         };
         var entity2 = new ChildEntity
@@ -1616,13 +2396,57 @@ public partial class IntegrationTests
         };
 
         await using var database = await sqlInstance.Build();
-        await RunQuery(database, query, null, null, false, new object[] { entity1, entity2, entity3, entity5 });
+        await RunQuery(database, query, null, null, false, [entity1, entity2, entity3, entity5]);
+    }
+
+    [Fact]
+    public async Task With_null_navigation_property_notEqual()
+    {
+        var query =
+            """
+            {
+              childEntities(where: {path: "ParentId", comparison: notEqual, value: "00000000-0000-0000-0000-000000000001"}, orderBy: {path: "property"})
+              {
+                property
+                parent
+                {
+                  property
+                }
+              }
+            }
+            """;
+
+        var entity1 = new ParentEntity
+        {
+            Id = new("00000000-0000-0000-0000-000000000001"),
+            Property = "Value1"
+        };
+        var entity2 = new ChildEntity
+        {
+            Property = "Value2",
+            Parent = entity1
+        };
+        var entity3 = new ChildEntity
+        {
+            Property = "Value3",
+            Parent = entity1
+        };
+        entity1.Children.Add(entity2);
+        entity1.Children.Add(entity3);
+        var entity5 = new ChildEntity
+        {
+            Property = "Value5"
+        };
+
+        await using var database = await sqlInstance.Build();
+        await RunQuery(database, query, null, null, false, [entity1, entity2, entity3, entity5]);
     }
 
     [Fact(Skip = "fix order")]
     public async Task MisNamedQuery()
     {
-        var query = """
+        var query =
+            """
             {
               misNamed
               {
@@ -1653,13 +2477,14 @@ public partial class IntegrationTests
         entity4.Children.Add(entity5);
 
         await using var database = await sqlInstance.Build();
-        await RunQuery(database, query, null, null, false, new object[] { entity1, entity2, entity3, entity4, entity5 });
+        await RunQuery(database, query, null, null, false, [entity1, entity2, entity3, entity4, entity5]);
     }
 
     [Fact(Skip = "fix order")]
     public async Task Parent_child()
     {
-        var query = """
+        var query =
+            """
             {
               parentEntities
               {
@@ -1700,7 +2525,7 @@ public partial class IntegrationTests
         entity4.Children.Add(entity5);
 
         await using var database = await sqlInstance.Build();
-        await RunQuery(database, query, null, null, false, new object[] { entity1, entity2, entity3, entity4, entity5 });
+        await RunQuery(database, query, null, null, false, [entity1, entity2, entity3, entity4, entity5]);
     }
 
     [Fact]
@@ -1724,19 +2549,19 @@ public partial class IntegrationTests
         parent.Children.Add(child2);
 
         var query = $$"""
-            {
-              parentEntities
-              {
-                property
-                children(id:'{{child1.Id}}' )
-                {
-                  property
-                }
-              }
-            }
-            """;
+                      {
+                        parentEntities
+                        {
+                          property
+                          children(id:"{{child1.Id}}" )
+                          {
+                            property
+                          }
+                        }
+                      }
+                      """;
         await using var database = await sqlInstance.Build();
-        await RunQuery(database, query, null, null, false, new object[] { parent, child1, child2 });
+        await RunQuery(database, query, null, null, false, [parent, child1, child2]);
     }
 
     [Fact(Skip = "fix order")]
@@ -1764,19 +2589,19 @@ public partial class IntegrationTests
         parent1.Children.Add(child2);
 
         var query = $$"""
-            {
-              parentEntities(id:'{{parent1.Id}}')
-              {
-                property
-                children
-                {
-                  property
-                }
-              }
-            }
-            """;
+                      {
+                        parentEntities(id:'{{parent1.Id}}')
+                        {
+                          property
+                          children
+                          {
+                            property
+                          }
+                        }
+                      }
+                      """;
         await using var database = await sqlInstance.Build();
-        await RunQuery(database, query, null, null, false, new object[] { parent1, parent2, child1, child2 });
+        await RunQuery(database, query, null, null, false, [parent1, parent2, child1, child2]);
     }
 
     [Fact]
@@ -1804,25 +2629,26 @@ public partial class IntegrationTests
         parent1.Children.Add(child2);
 
         var query = $$"""
-            {
-              parentEntities(id:'{{parent1.Id}}')
-              {
-                property
-                children(id:'{{child1.Id}}' )
-                {
-                  property
-                }
-              }
-            }
-            """;
+                      {
+                        parentEntities(id:"{{parent1.Id}}")
+                        {
+                          property
+                          children(id:"{{child1.Id}}" )
+                          {
+                            property
+                          }
+                        }
+                      }
+                      """;
         await using var database = await sqlInstance.Build();
-        await RunQuery(database, query, null, null, false, new object[] { parent1, parent2, child1, child2 });
+        await RunQuery(database, query, null, null, false, [parent1, parent2, child1, child2]);
     }
 
     [Fact]
     public async Task Many_children()
     {
-        var query = """
+        var query =
+            """
             {
               manyChildren
               {
@@ -1847,13 +2673,14 @@ public partial class IntegrationTests
         parent.Child2 = child2;
 
         await using var database = await sqlInstance.Build();
-        await RunQuery(database, query, null, null, false, new object[] { parent, child1, child2 });
+        await RunQuery(database, query, null, null, false, [parent, child1, child2]);
     }
 
     [Fact(Skip = "Broke with gql 4")]
     public async Task InheritedEntityInterface()
     {
-        var query = """
+        var query =
+            """
             {
               interfaceGraphConnection {
                 items {
@@ -1885,7 +2712,7 @@ public partial class IntegrationTests
 
         var derivedEntity1 = new DerivedEntity
         {
-            Id = Guid.Parse("00000000-0000-0000-0000-000000000001"),
+            Id = new("00000000-0000-0000-0000-000000000001"),
             Property = "Value1"
         };
         var childEntity1 = new DerivedChildEntity
@@ -1903,7 +2730,7 @@ public partial class IntegrationTests
 
         var derivedEntity2 = new DerivedWithNavigationEntity
         {
-            Id = Guid.Parse("00000000-0000-0000-0000-000000000002"),
+            Id = new("00000000-0000-0000-0000-000000000002"),
             Property = "Value4"
         };
         var childEntity3 = new DerivedChildEntity
@@ -1920,15 +2747,16 @@ public partial class IntegrationTests
         derivedEntity2.Children.Add(childEntity4);
 
         await using var database = await sqlInstance.Build();
-        await RunQuery(database, query, null, null, false, new object[] { derivedEntity1, childEntity1, childEntity2, derivedEntity2, childEntity3, childEntity4 });
+        await RunQuery(database, query, null, null, false, [derivedEntity1, childEntity1, childEntity2, derivedEntity2, childEntity3, childEntity4]);
     }
 
     [Fact]
     public async Task ManyToManyRightWhereAndInclude()
     {
-        var query = """
+        var query =
+            """
             {
-              manyToManyLeftEntities (where: {path: 'rights[rightName]', comparison: equal, value: "Right2"})
+              manyToManyLeftEntities (where: {path: "rights[rightName]", comparison: equal, value: "Right2"})
               {
                 leftName
                 rights
@@ -1974,15 +2802,71 @@ public partial class IntegrationTests
         };
 
         await using var database = await sqlInstance.Build();
-        await RunQuery(database, query, null, null, false, new object[] { middle11, middle12, middle21 });
+        await RunQuery(database, query, null, null, false, [middle11, middle12, middle21]);
+    }
+
+    [Fact]
+    public async Task ManyToManyRightWhereAndInclude_notEqual()
+    {
+        var query =
+            """
+            {
+              manyToManyLeftEntities (where: {path: "rights[rightName]", comparison: notEqual, value: "Right2"})
+              {
+                leftName
+                rights
+                {
+                  rightName
+                }
+              }
+            }
+            """;
+
+        var middle11 = new ManyToManyMiddleEntity
+        {
+            ManyToManyLeftEntity = new()
+            {
+                Id = "Left1Id",
+                LeftName = "Left1"
+            },
+            ManyToManyRightEntity = new()
+            {
+                Id = "Right1Id",
+                RightName = "Right1"
+            }
+        };
+
+        var middle12 = new ManyToManyMiddleEntity
+        {
+            ManyToManyLeftEntity = middle11.ManyToManyLeftEntity,
+            ManyToManyRightEntity = new()
+            {
+                Id = "Right2Id",
+                RightName = "Right2"
+            }
+        };
+
+        var middle21 = new ManyToManyMiddleEntity
+        {
+            ManyToManyLeftEntity = new()
+            {
+                Id = "Left2Id",
+                LeftName = "Left2"
+            },
+            ManyToManyRightEntity = middle11.ManyToManyRightEntity
+        };
+
+        await using var database = await sqlInstance.Build();
+        await RunQuery(database, query, null, null, false, [middle11, middle12, middle21]);
     }
 
     [Fact]
     public async Task ManyToManyLeftWhereAndInclude()
     {
-        var query = """
+        var query =
+            """
             {
-              manyToManyRightEntities (where: {path: 'lefts[leftName]', comparison: equal, value: "Left2"})
+              manyToManyRightEntities (where: {path: "lefts[leftName]", comparison: equal, value: "Left2"})
               {
                 rightName
                 lefts
@@ -2028,17 +2912,71 @@ public partial class IntegrationTests
         };
 
         await using var database = await sqlInstance.Build();
-        await RunQuery(database, query, null, null, false, new object[] { middle11, middle12, middle21 });
+        await RunQuery(database, query, null, null, false, [middle11, middle12, middle21]);
+    }
+
+    [Fact]
+    public async Task ManyToManyLeftWhereAndInclude_notEqual()
+    {
+        var query =
+            """
+            {
+              manyToManyRightEntities (where: {path: "lefts[leftName]", comparison: notEqual, value: "Left2"})
+              {
+                rightName
+                lefts
+                {
+                  leftName
+                }
+              }
+            }
+            """;
+
+        var middle11 = new ManyToManyMiddleEntity
+        {
+            ManyToManyLeftEntity = new()
+            {
+                Id = "Left1Id",
+                LeftName = "Left1"
+            },
+            ManyToManyRightEntity = new()
+            {
+                Id = "Right1Id",
+                RightName = "Right1"
+            }
+        };
+
+        var middle12 = new ManyToManyMiddleEntity
+        {
+            ManyToManyLeftEntity = middle11.ManyToManyLeftEntity,
+            ManyToManyRightEntity = new()
+            {
+                Id = "Right2Id",
+                RightName = "Right2"
+            }
+        };
+
+        var middle21 = new ManyToManyMiddleEntity
+        {
+            ManyToManyLeftEntity = new()
+            {
+                Id = "Left2Id",
+                LeftName = "Left2"
+            },
+            ManyToManyRightEntity = middle11.ManyToManyRightEntity
+        };
+
+        await using var database = await sqlInstance.Build();
+        await RunQuery(database, query, null, null, false, [middle11, middle12, middle21]);
     }
 
     static async Task RunQuery(
         SqlDatabase<IntegrationDbContext> database,
         string query,
         Inputs? inputs,
-        Filters? filters,
+        Filters<IntegrationDbContext>? filters,
         bool disableTracking,
         object[] entities,
-        bool disableAsync = false,
         [CallerFilePath] string sourceFile = "")
     {
         var dbContext = database.Context;
@@ -2048,34 +2986,342 @@ public partial class IntegrationTests
         services.AddSingleton<Query>();
         services.AddSingleton<Mutation>();
         services.AddSingleton(database.Context);
-        services.AddScoped<ICustomSorting<ParentEntity>, CustomOrder>();
-
+        services.AddGraphQL(null);
         foreach (var type in GetGraphQlTypes())
         {
             services.AddSingleton(type);
         }
 
         await using var context = database.NewDbContext();
-        SqlRecording.StartRecording();
+        Recording.Start();
+        string result;
         try
         {
-            var result = await QueryExecutor.ExecuteQuery(query, services, context, inputs, filters, disableTracking, disableAsync);
-            await Verify(result, sourceFile: sourceFile).ScrubInlineGuids();
+            result = await QueryExecutor.ExecuteQuery(query, services, context, inputs, filters, disableTracking);
         }
         catch (ExecutionError executionError)
         {
             await Verify(executionError.Message, sourceFile: sourceFile)
                 .IgnoreStackTrace();
+            return;
         }
         catch (Exception exception)
         {
             await Verify(exception, sourceFile: sourceFile)
                 .IgnoreStackTrace();
+            return;
         }
+
+        await Verify(result, sourceFile: sourceFile)
+            .ScrubInlineGuids();
     }
 
     static IEnumerable<Type> GetGraphQlTypes() =>
-        typeof(IntegrationTests).Assembly
+        typeof(IntegrationTests)
+            .Assembly
             .GetTypes()
-            .Where(x => !x.IsAbstract && typeof(GraphType).IsAssignableFrom(x));
+            .Where(_ => !_.IsAbstract && _.IsAssignableTo<GraphType>());
+
+    [Fact]
+    public async Task IQueryableFirst()
+    {
+        var query =
+            """
+            {
+              iQueryableFirst(id: "00000000-0000-0000-0000-000000000001") {
+                property
+              }
+            }
+            """;
+        await using var database = await sqlInstance.Build();
+        await RunQuery(database, query, null, null, false, []);
+    }
+
+    [Fact]
+    public async Task IQueryableSingle()
+    {
+        var query =
+            """
+            {
+              iQueryableSingle(id: "00000000-0000-0000-0000-000000000001") {
+                property
+              }
+            }
+            """;
+        await using var database = await sqlInstance.Build();
+        await RunQuery(database, query, null, null, false, []);
+    }
+
+    [Fact]
+    public async Task IQueryable()
+    {
+        var query =
+            """
+            {
+              iQueryable(id: "00000000-0000-0000-0000-000000000001") {
+                property
+              }
+            }
+            """;
+        await using var database = await sqlInstance.Build();
+        await RunQuery(database, query, null, null, false, []);
+    }
+
+    [Fact]
+    public async Task SingleNullQueryableSingle()
+    {
+        var query =
+            """
+            {
+              nullQueryableSingle(id: "00000000-0000-0000-0000-000000000001") {
+                property
+              }
+            }
+            """;
+        await using var database = await sqlInstance.Build();
+        await RunQuery(database, query, null, null, false, []);
+    }
+
+    [Fact]
+    public async Task NullQueryableFirst()
+    {
+        var query =
+            """
+            {
+              nullQueryableFirst(id: "00000000-0000-0000-0000-000000000001") {
+                property
+              }
+            }
+            """;
+        await using var database = await sqlInstance.Build();
+        await RunQuery(database, query, null, null, false, []);
+    }
+
+    [Fact]
+    public async Task NullTaskQueryableSingle()
+    {
+        var query =
+            """
+            {
+              nullTaskQueryableSingle(id: "00000000-0000-0000-0000-000000000001") {
+                property
+              }
+            }
+            """;
+        await using var database = await sqlInstance.Build();
+        await RunQuery(database, query, null, null, false, []);
+    }
+
+    [Fact]
+    public async Task NullTaskInnerQueryableSingle()
+    {
+        var query =
+            """
+            {
+              nullTaskInnerQueryableSingle(id: "00000000-0000-0000-0000-000000000001") {
+                property
+              }
+            }
+            """;
+        await using var database = await sqlInstance.Build();
+        await RunQuery(database, query, null, null, false, []);
+    }
+
+    [Fact]
+    public async Task NullTaskQueryableFirst()
+    {
+        var query =
+            """
+            {
+              nullTaskQueryableFirst(id: "00000000-0000-0000-0000-000000000001") {
+                property
+              }
+            }
+            """;
+        await using var database = await sqlInstance.Build();
+        await RunQuery(database, query, null, null, false, []);
+    }
+
+    [Fact]
+    public async Task NullTaskInnerQueryableFirst()
+    {
+        var query =
+            """
+            {
+              nullTaskInnerQueryableFirst(id: "00000000-0000-0000-0000-000000000001") {
+                property
+              }
+            }
+            """;
+        await using var database = await sqlInstance.Build();
+        await RunQuery(database, query, null, null, false, []);
+    }
+
+    [Fact]
+    public async Task SingleNullQueryableSingleDisallowNull()
+    {
+        var query =
+            """
+            {
+              nullQueryableSingleDisallowNull(id: "00000000-0000-0000-0000-000000000001") {
+                property
+              }
+            }
+            """;
+        await using var database = await sqlInstance.Build();
+        await RunQuery(database, query, null, null, false, []);
+    }
+
+    [Fact]
+    public async Task NullQueryableFirstDisallowNull()
+    {
+        var query =
+            """
+            {
+              nullQueryableFirstDisallowNull(id: "00000000-0000-0000-0000-000000000001") {
+                property
+              }
+            }
+            """;
+        await using var database = await sqlInstance.Build();
+        await RunQuery(database, query, null, null, false, []);
+    }
+
+    [Fact]
+    public async Task NullTaskQueryableSingleDisallowNull()
+    {
+        var query =
+            """
+            {
+              nullTaskQueryableSingleDisallowNull(id: "00000000-0000-0000-0000-000000000001") {
+                property
+              }
+            }
+            """;
+        await using var database = await sqlInstance.Build();
+        await RunQuery(database, query, null, null, false, []);
+    }
+
+    [Fact]
+    public async Task NullTaskInnerQueryableSingleDisallowNull()
+    {
+        var query =
+            """
+            {
+              nullTaskInnerQueryableSingleDisallowNull(id: "00000000-0000-0000-0000-000000000001") {
+                property
+              }
+            }
+            """;
+        await using var database = await sqlInstance.Build();
+        await RunQuery(database, query, null, null, false, []);
+    }
+
+    [Fact]
+    public async Task NullTaskQueryableFirstDisallowNull()
+    {
+        var query =
+            """
+            {
+              nullTaskQueryableFirstDisallowNull(id: "00000000-0000-0000-0000-000000000001") {
+                property
+              }
+            }
+            """;
+        await using var database = await sqlInstance.Build();
+        await RunQuery(database, query, null, null, false, []);
+    }
+
+    [Fact]
+    public async Task NullTaskInnerQueryableFirstDisallowNull()
+    {
+        var query =
+            """
+            {
+              nullTaskInnerQueryableFirstDisallowNull(id: "00000000-0000-0000-0000-000000000001") {
+                property
+              }
+            }
+            """;
+        await using var database = await sqlInstance.Build();
+        await RunQuery(database, query, null, null, false, []);
+    }
+
+    [Fact]
+    public async Task NullQueryConnection()
+    {
+        var query =
+            """
+            {
+              nullQueryConnection(first:2, after: "0") {
+                totalCount
+                edges {
+                  cursor
+                  node {
+                    property
+                  }
+                }
+                items {
+                  property
+                }
+              }
+            }
+            """;
+        var entities = BuildEntities(8);
+
+        await using var database = await sqlInstance.Build();
+        await RunQuery(database, query, null, null, false, entities.ToArray());
+    }
+
+    [Fact]
+    public async Task NullTaskQueryConnection()
+    {
+        var query =
+            """
+            {
+              nullTaskQueryConnection(first:2, after: "0") {
+                totalCount
+                edges {
+                  cursor
+                  node {
+                    property
+                  }
+                }
+                items {
+                  property
+                }
+              }
+            }
+            """;
+        var entities = BuildEntities(8);
+
+        await using var database = await sqlInstance.Build();
+        await RunQuery(database, query, null, null, false, entities.ToArray());
+    }
+
+    [Fact]
+    public async Task NullTaskInnerQueryConnection()
+    {
+        var query =
+            """
+            {
+              nullTaskInnerQueryConnection(first:2, after: "0") {
+                totalCount
+                edges {
+                  cursor
+                  node {
+                    property
+                  }
+                }
+                items {
+                  property
+                }
+              }
+            }
+            """;
+        var entities = BuildEntities(8);
+
+        await using var database = await sqlInstance.Build();
+        await RunQuery(database, query, null, null, false, entities.ToArray());
+    }
 }

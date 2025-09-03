@@ -9,31 +9,120 @@ partial class EfGraphQLService<TDbContext>
     public ConnectionBuilder<object> AddQueryConnectionField<TReturn>(
         IComplexGraphType graph,
         string name,
-        Func<ResolveEfFieldContext<TDbContext, object>, IQueryable<TReturn>>? resolve = null,
-        Type? itemGraphType = null)
+        Func<ResolveEfFieldContext<TDbContext, object>, IOrderedQueryable<TReturn>?>? resolve = null,
+        Type? itemGraphType = null,
+        bool omitQueryArguments = false)
+        where TReturn : class =>
+        AddQueryConnectionField<TReturn>(
+            graph,
+            name,
+            resolve == null ? null : context => Task.FromResult(resolve(context)),
+            itemGraphType,
+            omitQueryArguments);
+
+    public ConnectionBuilder<object> AddQueryConnectionField<TReturn>(
+        IComplexGraphType graph,
+        string name,
+        Func<ResolveEfFieldContext<TDbContext, object>, Task<IOrderedQueryable<TReturn>?>?>? resolve = null,
+        Type? itemGraphType = null,
+        bool omitQueryArguments = false)
         where TReturn : class
     {
         itemGraphType ??= GraphTypeFinder.FindGraphType<TReturn>();
         var addConnectionT = addQueryableConnection.MakeGenericMethod(typeof(object), itemGraphType, typeof(TReturn));
-        return (ConnectionBuilder<object>)addConnectionT.Invoke(this, new object?[] { graph, name, resolve})!;
+        try
+        {
+            return (ConnectionBuilder<object>) addConnectionT.Invoke(
+                this,
+                [
+                    graph,
+                    name,
+                    resolve,
+                    omitQueryArguments
+                ])!;
+        }
+        catch (TaskCanceledException)
+        {
+            throw;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            throw new(
+                $"""
+                Failed to execute query for field `{name}`
+                ItemGraphType: {itemGraphType.FullName}
+                TReturn: {typeof(TReturn).FullName}
+                """,
+                exception);
+        }
     }
 
     public ConnectionBuilder<TSource> AddQueryConnectionField<TSource, TReturn>(
         IComplexGraphType graph,
         string name,
-        Func<ResolveEfFieldContext<TDbContext, TSource>, IQueryable<TReturn>>? resolve = null,
-        Type? itemGraphType = null)
+        Func<ResolveEfFieldContext<TDbContext, TSource>, IOrderedQueryable<TReturn>?>? resolve = null,
+        Type? itemGraphType = null,
+        bool omitQueryArguments = false)
+        where TReturn : class =>
+        AddQueryConnectionField<TSource, TReturn>(
+            graph,
+            name,
+            resolve == null ? null : context => Task.FromResult(resolve(context)),
+            itemGraphType,
+            omitQueryArguments);
+
+    public ConnectionBuilder<TSource> AddQueryConnectionField<TSource, TReturn>(
+        IComplexGraphType graph,
+        string name,
+        Func<ResolveEfFieldContext<TDbContext, TSource>, Task<IOrderedQueryable<TReturn>?>?>? resolve = null,
+        Type? itemGraphType = null,
+        bool omitQueryArguments = false)
         where TReturn : class
     {
         itemGraphType ??= GraphTypeFinder.FindGraphType<TReturn>();
         var addConnectionT = addQueryableConnection.MakeGenericMethod(typeof(TSource), itemGraphType, typeof(TReturn));
-        return (ConnectionBuilder<TSource>) addConnectionT.Invoke(this, new object?[] { graph, name, resolve })!;
+
+        try
+        {
+            return (ConnectionBuilder<TSource>) addConnectionT.Invoke(
+                this,
+                [
+                    graph,
+                    name,
+                    resolve,
+                    omitQueryArguments
+                ])!;
+        }
+        catch (TaskCanceledException)
+        {
+            throw;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            throw new(
+                $"""
+                Failed to execute query for field `{name}`
+                ItemGraphType: {itemGraphType.FullName}
+                TSource: {typeof(TSource).FullName}
+                TReturn: {typeof(TReturn).FullName}
+                """,
+                exception);
+        }
     }
 
     ConnectionBuilder<TSource> AddQueryableConnection<TSource, TGraph, TReturn>(
         IComplexGraphType graph,
         string name,
-        Func<ResolveEfFieldContext<TDbContext, TSource>, IQueryable<TReturn>>? resolve)
+        Func<ResolveEfFieldContext<TDbContext, TSource>, Task<IOrderedQueryable<TReturn>?>?>? resolve,
+        bool omitQueryArguments)
         where TGraph : IGraphType
         where TReturn : class
     {
@@ -41,28 +130,66 @@ partial class EfGraphQLService<TDbContext>
 
         if (resolve is not null)
         {
+            var names = GetKeyNames<TReturn>();
             builder.ResolveAsync(
                 async context =>
                 {
-                    var efFieldContext = BuildContext(context);
-                    var query = resolve(efFieldContext);
+                    var fieldContext = BuildContext(context);
+
+                    var task = resolve(fieldContext);
+                    if (task == null)
+                    {
+                        return new Connection<TSource>();
+                    }
+
+                    IQueryable<TReturn>? query = await task;
+                    if (query == null)
+                    {
+                        return new Connection<TSource>();
+                    }
+
                     if (disableTracking)
                     {
                         query = query.AsNoTracking();
                     }
 
                     query = includeAppender.AddIncludes(query, context);
-                    var names = GetKeyNames<TReturn>();
-                    query = query.ApplyGraphQlArguments(context, names, true);
-                    return await query
-                        .ApplyConnectionContext(
-                            context.First,
-                            context.After!,
-                            context.Last,
-                            context.Before!,
-                            context,
-                            context.CancellationToken,
-                            efFieldContext.Filters);
+                    query = query.ApplyGraphQlArguments(context, names, true, omitQueryArguments);
+
+                    try
+                    {
+                        return await query
+                            .ApplyConnectionContext(
+                                context.First,
+                                context.After!,
+                                context.Last,
+                                context.Before!,
+                                context,
+                                context.CancellationToken,
+                                fieldContext.Filters,
+                                fieldContext.DbContext);
+                    }
+                    catch (TaskCanceledException)
+                    {
+                        throw;
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        throw;
+                    }
+                    catch (Exception exception)
+                    {
+                        throw new(
+                            $"""
+                             Failed to execute query for field `{name}`
+                             TGraph: {typeof(TGraph).FullName}
+                             TSource: {typeof(TSource).FullName}
+                             TReturn: {typeof(TReturn).FullName}
+                             KeyNames: {JoinKeys(names)}
+                             Query: {query.ToQueryString()}
+                             """,
+                            exception);
+                    }
                 });
         }
 
@@ -74,5 +201,4 @@ partial class EfGraphQLService<TDbContext>
         field.AddWhereArgument(hasId);
         return builder;
     }
-
 }

@@ -1,10 +1,10 @@
-﻿class OrderByGraph :
+sealed class OrderByGraph :
     InputObjectGraphType<OrderBy>
 {
     public OrderByGraph()
     {
         Name = nameof(OrderBy);
-        Field(x => x.Path);
-        Field(x => x.Descending, true);
+        Field(_ => _.Path);
+        Field(_ => _.Descending, true);
     }
 }

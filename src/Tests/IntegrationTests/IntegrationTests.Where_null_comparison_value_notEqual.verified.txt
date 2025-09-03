@@ -1,0 +1,19 @@
+﻿{
+  target:
+{
+  "data": {
+    "parentEntities": [
+      {
+        "id": "Guid_1"
+      }
+    ]
+  }
+},
+  sql: {
+    Text:
+select p.Id,
+       p.Property
+from   ParentEntities as p
+where  p.Property is not null
+  }
+}

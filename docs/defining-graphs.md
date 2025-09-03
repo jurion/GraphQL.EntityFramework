@@ -57,7 +57,7 @@ Queries in GraphQL.net are defined using the [Fields API](https://graphql-dotnet
 ### Root Query
 
 <!-- snippet: rootQuery -->
-<a id='snippet-rootquery'></a>
+<a id='snippet-rootQuery'></a>
 ```cs
 public class Query :
     QueryGraphType<MyDbContext>
@@ -66,15 +66,15 @@ public class Query :
         base(graphQlService)
     {
         AddSingleField(
-            resolve: context => context.DbContext.Companies,
+            resolve: _ => _.DbContext.Companies,
             name: "company");
         AddQueryField(
             name: "companies",
-            resolve: context => context.DbContext.Companies);
+            resolve: _ => _.DbContext.Companies);
     }
 }
 ```
-<sup><a href='/src/Snippets/RootQuery.cs#L3-L20' title='Snippet source file'>snippet source</a> | <a href='#snippet-rootquery' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/Snippets/RootQuery.cs#L3-L20' title='Snippet source file'>snippet source</a> | <a href='#snippet-rootQuery' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 `AddQueryField` will result in all matching being found and returned.
@@ -85,7 +85,7 @@ public class Query :
 ### Typed Graph
 
 <!-- snippet: typedGraph -->
-<a id='snippet-typedgraph'></a>
+<a id='snippet-typedGraph'></a>
 ```cs
 public class CompanyGraph :
     EfObjectGraphType<MyDbContext,Company>
@@ -95,16 +95,16 @@ public class CompanyGraph :
     {
         AddNavigationListField(
             name: "employees",
-            resolve: context => context.Source.Employees);
+            resolve: _ => _.Source.Employees);
         AddNavigationConnectionField(
             name: "employeesConnection",
-            resolve: context => context.Source.Employees,
-            includeNames: new[] {"Employees"});
+            resolve: _ => _.Source.Employees,
+            includeNames: ["Employees"]);
         AutoMap();
     }
 }
 ```
-<sup><a href='/src/Snippets/TypedGraph.cs#L5-L24' title='Snippet source file'>snippet source</a> | <a href='#snippet-typedgraph' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/Snippets/TypedGraph.cs#L5-L24' title='Snippet source file'>snippet source</a> | <a href='#snippet-typedGraph' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 
@@ -119,19 +119,20 @@ Creating a page-able field is supported through [GraphQL Connections](https://gr
 #### Graph Type
 
 <!-- snippet: ConnectionRootQuery -->
-<a id='snippet-connectionrootquery'></a>
+<a id='snippet-ConnectionRootQuery'></a>
 ```cs
 public class Query :
     QueryGraphType<MyDbContext>
 {
-    public Query(IEfGraphQLService<MyDbContext> graphQlService) :
+    public Query(IEfGraphQLService<MyDbContext> graphQlService)
+        :
         base(graphQlService) =>
-        AddQueryConnectionField(
+        AddQueryConnectionField<Company>(
             name: "companies",
-            resolve: context => context.DbContext.Companies);
+            resolve: _ => _.DbContext.Companies.OrderBy(_ => _.Name));
 }
 ```
-<sup><a href='/src/Snippets/ConnectionRootQuery.cs#L3-L15' title='Snippet source file'>snippet source</a> | <a href='#snippet-connectionrootquery' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/Snippets/ConnectionRootQuery.cs#L3-L16' title='Snippet source file'>snippet source</a> | <a href='#snippet-ConnectionRootQuery' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 
@@ -212,7 +213,7 @@ public class Query :
 ### Typed Graph
 
 <!-- snippet: ConnectionTypedGraph -->
-<a id='snippet-connectiontypedgraph'></a>
+<a id='snippet-ConnectionTypedGraph'></a>
 ```cs
 public class CompanyGraph :
     EfObjectGraphType<MyDbContext, Company>
@@ -221,10 +222,10 @@ public class CompanyGraph :
         base(graphQlService) =>
         AddNavigationConnectionField(
             name: "employees",
-            resolve: context => context.Source.Employees);
+            resolve: _ => _.Source.Employees);
 }
 ```
-<sup><a href='/src/Snippets/ConnectionTypedGraph.cs#L5-L17' title='Snippet source file'>snippet source</a> | <a href='#snippet-connectiontypedgraph' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/Snippets/ConnectionTypedGraph.cs#L5-L17' title='Snippet source file'>snippet source</a> | <a href='#snippet-ConnectionTypedGraph' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 
@@ -306,7 +307,7 @@ In some cases, it may be necessary to use `Field` instead of `AddQueryField`/`Ad
  * Apply the `where` argument expression using `ExpressionBuilder<T>.BuildPredicate(whereExpression)`
 
 <!-- snippet: ManuallyApplyWhere -->
-<a id='snippet-manuallyapplywhere'></a>
+<a id='snippet-ManuallyApplyWhere'></a>
 ```cs
 Field<ListGraphType<EmployeeSummaryGraphType>>("employeeSummary")
     .Argument<ListGraphType<WhereExpressionGraph>>("where")
@@ -332,11 +333,11 @@ Field<ListGraphType<EmployeeSummaryGraphType>>("employeeSummary")
             select new EmployeeSummary
             {
                 CompanyId = g.Key.CompanyId,
-                AverageAge = g.Average(x => x.Age),
+                AverageAge = g.Average(_ => _.Age),
             };
     });
 ```
-<sup><a href='/src/SampleWeb/Query.cs#L47-L77' title='Snippet source file'>snippet source</a> | <a href='#snippet-manuallyapplywhere' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/SampleWeb/Query.cs#L52-L82' title='Snippet source file'>snippet source</a> | <a href='#snippet-ManuallyApplyWhere' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 
@@ -345,7 +346,7 @@ Field<ListGraphType<EmployeeSummaryGraphType>>("employeeSummary")
 Sometimes it is necessary to access the current DbContext from withing the base `QueryGraphType.Field` method. in this case the custom `ResolveEfFieldContext` is not available. In this scenario `QueryGraphType.ResolveDbContext` can be used to resolve the current DbContext.
 
 <!-- snippet: QueryResolveDbContext -->
-<a id='snippet-queryresolvedbcontext'></a>
+<a id='snippet-QueryResolveDbContext'></a>
 ```cs
 public class Query :
     QueryGraphType<MyDbContext>
@@ -357,11 +358,11 @@ public class Query :
             {
                 // uses the base QueryGraphType to resolve the db context
                 var dbContext = ResolveDbContext(context);
-                return dbContext.Companies.Where(x => x.Age > 10);
+                return dbContext.Companies.Where(_ => _.Age > 10);
             });
 }
 ```
-<sup><a href='/src/Snippets/ResolveDbContextQuery.cs#L5-L21' title='Snippet source file'>snippet source</a> | <a href='#snippet-queryresolvedbcontext' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/Snippets/ResolveDbContextQuery.cs#L5-L21' title='Snippet source file'>snippet source</a> | <a href='#snippet-QueryResolveDbContext' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 

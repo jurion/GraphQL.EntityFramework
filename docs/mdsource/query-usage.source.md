@@ -84,6 +84,7 @@ All where statements require a `path`. This is a full path to a, possible nested
 #### Supported Comparisons
 
  * `equal`: (the default value if `comparison` is omitted)
+ * `notEqual`: (the default value if `comparison` is omitted)
  * `greaterThan`
  * `greaterThanOrEqual`
  * `lessThan`
@@ -238,25 +239,6 @@ Or:
       }
     ]
   )
-  {
-    property
-  }
-}
-```
-
-
-#### Case Sensitivity
-
-All string comparisons are, by default, done using no [StringComparison](https://msdn.microsoft.com/en-us/library/system.stringcomparison.aspx). A custom StringComparison can be used via the `case` attribute.
-
-```graphql
-{
-  entities
-  (where: {
-    path: "Property",
-    comparison: "endsWith",
-    value: "the value",
-    case: "Ordinal"})
   {
     property
   }

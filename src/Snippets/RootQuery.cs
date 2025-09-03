@@ -9,11 +9,11 @@
             base(graphQlService)
         {
             AddSingleField(
-                resolve: context => context.DbContext.Companies,
+                resolve: _ => _.DbContext.Companies,
                 name: "company");
             AddQueryField(
                 name: "companies",
-                resolve: context => context.DbContext.Companies);
+                resolve: _ => _.DbContext.Companies);
         }
     }
 
@@ -25,16 +25,8 @@
         public IQueryable<Company> Companies { get; set; } = null!;
     }
 
-    public class Company
-    {
-    }
+    public class Company;
 
-    class CompanyGraph :
-        EfObjectGraphType<MyDbContext, Company>
-    {
-        public CompanyGraph(IEfGraphQLService<MyDbContext> efGraphQlService) :
-            base(efGraphQlService)
-        {
-        }
-    }
+    class CompanyGraph(IEfGraphQLService<MyDbContext> efGraphQlService) :
+        EfObjectGraphType<MyDbContext, Company>(efGraphQlService);
 }

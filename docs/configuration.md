@@ -15,24 +15,23 @@ Enabling is done via registering in a container.
 The container registration can be done via adding to a [IServiceCollection](https://docs.microsoft.com/en-us/dotnet/api/microsoft.extensions.dependencyinjection.iservicecollection):
 
 <!-- snippet: RegisterInContainer -->
-<a id='snippet-registerincontainer'></a>
+<a id='snippet-RegisterInContainer'></a>
 ```cs
 public static void RegisterInContainer<TDbContext>(
         IServiceCollection services,
         ResolveDbContext<TDbContext>? resolveDbContext = null,
         IModel? model = null,
-        ResolveFilters? resolveFilters = null,
-        bool disableTracking = false,
-        bool disableAsync = false)
+        ResolveFilters<TDbContext>? resolveFilters = null,
+        bool disableTracking = false)
 ```
-<sup><a href='/src/GraphQL.EntityFramework/EfGraphQLConventions.cs#L14-L24' title='Snippet source file'>snippet source</a> | <a href='#snippet-registerincontainer' title='Start of snippet'>anchor</a></sup>
-<a id='snippet-registerincontainer-1'></a>
+<sup><a href='/src/GraphQL.EntityFramework/EfGraphQLConventions.cs#L14-L23' title='Snippet source file'>snippet source</a> | <a href='#snippet-RegisterInContainer' title='Start of snippet'>anchor</a></sup>
+<a id='snippet-RegisterInContainer-1'></a>
 ```cs
 EfGraphQLConventions.RegisterInContainer<MyDbContext>(
     serviceCollection,
     model: ModelBuilder.GetInstance());
 ```
-<sup><a href='/src/Snippets/Configuration.cs#L18-L22' title='Snippet source file'>snippet source</a> | <a href='#snippet-registerincontainer-1' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/Snippets/Configuration.cs#L17-L21' title='Snippet source file'>snippet source</a> | <a href='#snippet-RegisterInContainer-1' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 
@@ -46,7 +45,7 @@ Configuration requires an instance of `Microsoft.EntityFrameworkCore.Metadata.IM
 To build an instance of an `IModel` at configuration time it can be helpful to have a class specifically for that purpose:
 
 <!-- snippet: ModelBuilder -->
-<a id='snippet-modelbuilder'></a>
+<a id='snippet-ModelBuilder'></a>
 ```cs
 static class ModelBuilder
 {
@@ -59,7 +58,7 @@ static class ModelBuilder
     }
 }
 ```
-<sup><a href='/src/Snippets/Configuration.cs#L3-L14' title='Snippet source file'>snippet source</a> | <a href='#snippet-modelbuilder' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/Snippets/Configuration.cs#L3-L14' title='Snippet source file'>snippet source</a> | <a href='#snippet-ModelBuilder' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 
@@ -72,7 +71,7 @@ A delegate that resolves the DbContext.
 ```cs
 namespace GraphQL.EntityFramework;
 
-public delegate TDbContext ResolveDbContext<out TDbContext>(object userContext)
+public delegate TDbContext ResolveDbContext<out TDbContext>(object userContext, IServiceProvider? requestServices)
     where TDbContext : DbContext;
 ```
 <sup><a href='/src/GraphQL.EntityFramework/GraphApi/ResolveDbContext.cs#L1-L4' title='Snippet source file'>snippet source</a> | <a href='#snippet-ResolveDbContext.cs' title='Start of snippet'>anchor</a></sup>
@@ -92,9 +91,10 @@ A delegate that resolves the [Filters](filters.md).
 ```cs
 namespace GraphQL.EntityFramework;
 
-public delegate Filters? ResolveFilters(object userContext);
+public delegate Filters<TDbContext>? ResolveFilters<TDbContext>(object userContext)
+    where TDbContext : DbContext;
 ```
-<sup><a href='/src/GraphQL.EntityFramework/Filters/ResolveFilters.cs#L1-L3' title='Snippet source file'>snippet source</a> | <a href='#snippet-ResolveFilters.cs' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/GraphQL.EntityFramework/Filters/ResolveFilters.cs#L1-L4' title='Snippet source file'>snippet source</a> | <a href='#snippet-ResolveFilters.cs' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 It has access to the current GraphQL user context.
@@ -115,24 +115,23 @@ Cycles are not allowed in no-tracking queries; either use a tracking query or re
 ### Usage
 
 <!-- snippet: RegisterInContainer -->
-<a id='snippet-registerincontainer'></a>
+<a id='snippet-RegisterInContainer'></a>
 ```cs
 public static void RegisterInContainer<TDbContext>(
         IServiceCollection services,
         ResolveDbContext<TDbContext>? resolveDbContext = null,
         IModel? model = null,
-        ResolveFilters? resolveFilters = null,
-        bool disableTracking = false,
-        bool disableAsync = false)
+        ResolveFilters<TDbContext>? resolveFilters = null,
+        bool disableTracking = false)
 ```
-<sup><a href='/src/GraphQL.EntityFramework/EfGraphQLConventions.cs#L14-L24' title='Snippet source file'>snippet source</a> | <a href='#snippet-registerincontainer' title='Start of snippet'>anchor</a></sup>
-<a id='snippet-registerincontainer-1'></a>
+<sup><a href='/src/GraphQL.EntityFramework/EfGraphQLConventions.cs#L14-L23' title='Snippet source file'>snippet source</a> | <a href='#snippet-RegisterInContainer' title='Start of snippet'>anchor</a></sup>
+<a id='snippet-RegisterInContainer-1'></a>
 ```cs
 EfGraphQLConventions.RegisterInContainer<MyDbContext>(
     serviceCollection,
     model: ModelBuilder.GetInstance());
 ```
-<sup><a href='/src/Snippets/Configuration.cs#L18-L22' title='Snippet source file'>snippet source</a> | <a href='#snippet-registerincontainer-1' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/Snippets/Configuration.cs#L17-L21' title='Snippet source file'>snippet source</a> | <a href='#snippet-RegisterInContainer-1' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 Then the `IEfGraphQLService` can be resolved via [dependency injection in GraphQL.net](https://graphql-dotnet.github.io/docs/guides/advanced#dependency-injection) to be used in `ObjectGraphType`s when adding query fields.
@@ -231,32 +230,24 @@ See also [EntityFrameworkServiceCollectionExtensions](https://docs.microsoft.com
 With the DbContext existing in the container, it can be resolved in the controller that handles the GraphQL query:
 
 <!-- snippet: GraphQlController -->
-<a id='snippet-graphqlcontroller'></a>
+<a id='snippet-GraphQlController'></a>
 ```cs
 [Route("[controller]")]
 [ApiController]
-public class GraphQlController :
+public class GraphQlController(ISchema schema, IDocumentExecuter executer) :
     Controller
 {
-    IDocumentExecuter executer;
-    ISchema schema;
     static GraphQLSerializer writer = new(true);
-
-    public GraphQlController(ISchema schema, IDocumentExecuter executer)
-    {
-        this.schema = schema;
-        this.executer = executer;
-    }
 
     [HttpGet]
     public Task Get(
         [FromQuery] string query,
         [FromQuery] string? variables,
         [FromQuery] string? operationName,
-        CancellationToken cancellation)
+        Cancel cancel)
     {
         var inputs = variables.ToInputs();
-        return Execute(query, operationName, inputs, cancellation);
+        return Execute(query, operationName, inputs, cancel);
     }
 
     public class GraphQLQuery
@@ -269,16 +260,16 @@ public class GraphQlController :
     [HttpPost]
     public Task Post(
         [FromBody]GraphQLQuery query,
-        CancellationToken cancellation)
+        Cancel cancel)
     {
         var inputs = query.Variables.ToInputs();
-        return Execute(query.Query, query.OperationName, inputs, cancellation);
+        return Execute(query.Query, query.OperationName, inputs, cancel);
     }
 
     async Task Execute(string query,
         string? operationName,
         Inputs? variables,
-        CancellationToken cancellation)
+        Cancel cancel)
     {
         var options = new ExecutionOptions
         {
@@ -286,19 +277,17 @@ public class GraphQlController :
             Query = query,
             OperationName = operationName,
             Variables = variables,
-            CancellationToken = cancellation,
-#if (DEBUG)
+            CancellationToken = cancel,
             ThrowOnUnhandledException = true,
             EnableMetrics = true,
-#endif
         };
         var executeAsync = await executer.ExecuteAsync(options);
 
-        await writer.WriteAsync(Response.Body, executeAsync, cancellation);
+        await writer.WriteAsync(Response.Body, executeAsync, cancel);
     }
 }
 ```
-<sup><a href='/src/SampleWeb/GraphQlController.cs#L5-L70' title='Snippet source file'>snippet source</a> | <a href='#snippet-graphqlcontroller' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/SampleWeb/GraphQlController.cs#L5-L60' title='Snippet source file'>snippet source</a> | <a href='#snippet-GraphQlController' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 
@@ -307,44 +296,21 @@ public class GraphQlController :
 Multiple different DbContext types can be registered and used.
 
 
-### UserContext
-
-A user context that exposes both types.
-
-<!-- snippet: MultiUserContext -->
-<a id='snippet-multiusercontext'></a>
-```cs
-public class UserContext: Dictionary<string, object?>
-{
-    public UserContext(DbContext1 context1, DbContext2 context2)
-    {
-        DbContext1 = context1;
-        DbContext2 = context2;
-    }
-
-    public readonly DbContext1 DbContext1;
-    public readonly DbContext2 DbContext2;
-}
-```
-<sup><a href='/src/Tests/MultiContextTests/MultiContextTests.cs#L80-L92' title='Snippet source file'>snippet source</a> | <a href='#snippet-multiusercontext' title='Start of snippet'>anchor</a></sup>
-<!-- endSnippet -->
-
-
 ### Register in container
 
 Register both DbContext types in the container and include how those instance can be extracted from the GraphQL context:
 
 <!-- snippet: RegisterMultipleInContainer -->
-<a id='snippet-registermultipleincontainer'></a>
+<a id='snippet-RegisterMultipleInContainer'></a>
 ```cs
 EfGraphQLConventions.RegisterInContainer(
     services,
-    userContext => ((UserContext) userContext).DbContext1);
+    (_, requestServices) => requestServices!.GetRequiredService<DbContext1>());
 EfGraphQLConventions.RegisterInContainer(
     services,
-    userContext => ((UserContext) userContext).DbContext2);
+    (_, requestServices) => requestServices!.GetRequiredService<DbContext2>());
 ```
-<sup><a href='/src/Tests/MultiContextTests/MultiContextTests.cs#L49-L58' title='Snippet source file'>snippet source</a> | <a href='#snippet-registermultipleincontainer' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/Tests/MultiContextTests/MultiContextTests.cs#L49-L58' title='Snippet source file'>snippet source</a> | <a href='#snippet-RegisterMultipleInContainer' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 
@@ -354,16 +320,16 @@ Use the user type to pass in both DbContext instances.
 
 
 <!-- snippet: MultiExecutionOptions -->
-<a id='snippet-multiexecutionoptions'></a>
+<a id='snippet-MultiExecutionOptions'></a>
 ```cs
 var executionOptions = new ExecutionOptions
 {
     Schema = schema,
     Query = query,
-    UserContext = new UserContext(dbContext1, dbContext2)
+    RequestServices = provider,
 };
 ```
-<sup><a href='/src/Tests/MultiContextTests/MultiContextTests.cs#L64-L73' title='Snippet source file'>snippet source</a> | <a href='#snippet-multiexecutionoptions' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/Tests/MultiContextTests/MultiContextTests.cs#L64-L73' title='Snippet source file'>snippet source</a> | <a href='#snippet-MultiExecutionOptions' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 
@@ -384,19 +350,19 @@ public class MultiContextQuery :
         efGraphQlService1.AddSingleField(
             graph: this,
             name: "entity1",
-            resolve: context =>
-            {
-                var userContext = (UserContext) context.UserContext;
-                return userContext.DbContext1.Entities;
-            });
+            resolve: _ => _.DbContext.Entities);
+        efGraphQlService1.AddFirstField(
+            graph: this,
+            name: "entity1First",
+            resolve: _ => _.DbContext.Entities);
         efGraphQlService2.AddSingleField(
             graph: this,
             name: "entity2",
-            resolve: context =>
-            {
-                var userContext = (UserContext) context.UserContext;
-                return userContext.DbContext2.Entities;
-            });
+            resolve: _ => _.DbContext.Entities);
+        efGraphQlService2.AddFirstField(
+            graph: this,
+            name: "entity2First",
+            resolve: _ => _.DbContext.Entities);
     }
 }
 ```
@@ -428,9 +394,8 @@ public class Entity1GraphType :
 The `GraphQlController` can be tested using the [ASP.NET Integration tests](https://docs.microsoft.com/en-us/aspnet/core/test/integration-tests) via the [Microsoft.AspNetCore.Mvc.Testing NuGet package](https://www.nuget.org/packages/Microsoft.AspNetCore.Mvc.Testing).
 
 <!-- snippet: GraphQlControllerTests -->
-<a id='snippet-graphqlcontrollertests'></a>
+<a id='snippet-GraphQlControllerTests'></a>
 ```cs
-[UsesVerify]
 public class GraphQlControllerTests
 {
     static HttpClient client;
@@ -446,7 +411,7 @@ public class GraphQlControllerTests
             request =>
             {
                 var headers = request.Headers;
-                headers["Sec-WebSocket-Protocol"] = "graphql-ws";
+                headers.SecWebSocketProtocol = "graphql-ws";
             };
         clientQueryExecutor = new(JsonConvert.SerializeObject);
     }
@@ -454,7 +419,8 @@ public class GraphQlControllerTests
     [Fact]
     public async Task Get()
     {
-        var query = """
+        var query =
+            """
             {
               companies
               {
@@ -470,7 +436,8 @@ public class GraphQlControllerTests
     [Fact]
     public async Task Post()
     {
-        var query = """
+        var query =
+            """
             {
               companies
               {
@@ -486,7 +453,8 @@ public class GraphQlControllerTests
     [Fact]
     public async Task Single()
     {
-        var query = """
+        var query =
+            """
             query ($id: ID!)
             {
               company(id:$id)
@@ -506,9 +474,33 @@ public class GraphQlControllerTests
     }
 
     [Fact]
+    public async Task First()
+    {
+        var query =
+            """
+            query ($id: ID!)
+            {
+              companyFirst(id:$id)
+              {
+                id
+              }
+            }
+            """;
+        var variables = new
+        {
+            id = "1"
+        };
+
+        using var response = await clientQueryExecutor.ExecuteGet(client, query, variables);
+        response.EnsureSuccessStatusCode();
+        await Verify(await response.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
     public async Task Single_not_found()
     {
-        var query = """
+        var query =
+            """
             query ($id: ID!)
             {
               company(id:$id)
@@ -522,15 +514,37 @@ public class GraphQlControllerTests
             id = "99"
         };
 
-        using var response = await clientQueryExecutor.ExecuteGet(client, query, variables);
-        var result = await response.Content.ReadAsStringAsync();
-        Assert.Contains("Not found", result);
+        await ThrowsTask(() => clientQueryExecutor.ExecuteGet(client, query, variables))
+            .IgnoreStackTrace();
+    }
+
+    [Fact]
+    public async Task First_not_found()
+    {
+        var query =
+            """
+            query ($id: ID!)
+            {
+              companyFirst(id:$id)
+              {
+                id
+              }
+            }
+            """;
+        var variables = new
+        {
+            id = "99"
+        };
+
+        var response = await clientQueryExecutor.ExecuteGet(client, query, variables);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
 
     [Fact]
     public async Task Variable()
     {
-        var query = """
+        var query =
+            """
             query ($id: ID!)
             {
               companies(ids:[$id])
@@ -577,7 +591,8 @@ public class GraphQlControllerTests
     [Fact]
     public async Task Employee_summary()
     {
-        var query = """
+        var query =
+            """
             query {
               employeeSummary {
                 companyId
@@ -593,13 +608,14 @@ public class GraphQlControllerTests
     [Fact]
     public async Task Complex_query_result()
     {
-        var query = """
+        var query =
+            """
             query {
               employees (
                 where: [
                   {groupedExpressions: [
                     {path: "content", comparison: contains, value: "4", connector: or},
-            
+
                       { path: "content", comparison: contains, value: "2"}
                   ], connector: and},
                   {path: "age", comparison: greaterThanOrEqual, value: "31"}
@@ -623,7 +639,7 @@ public class GraphQlControllerTests
     }
 }
 ```
-<sup><a href='/src/SampleWeb.Tests/GraphQlControllerTests.cs#L4-L199' title='Snippet source file'>snippet source</a> | <a href='#snippet-graphqlcontrollertests' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/SampleWeb.Tests/GraphQlControllerTests.cs#L5-L250' title='Snippet source file'>snippet source</a> | <a href='#snippet-GraphQlControllerTests' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 
@@ -637,7 +653,7 @@ The `GraphQlExtensions` class exposes some helper methods:
 Wraps the `DocumentExecuter.ExecuteAsync` to throw if there are any errors.
 
 <!-- snippet: ExecuteWithErrorCheck -->
-<a id='snippet-executewitherrorcheck'></a>
+<a id='snippet-ExecuteWithErrorCheck'></a>
 ```cs
 public static async Task<ExecutionResult> ExecuteWithErrorCheck(
     this IDocumentExecuter executer,
@@ -660,7 +676,7 @@ public static async Task<ExecutionResult> ExecuteWithErrorCheck(
     return executionResult;
 }
 ```
-<sup><a href='/src/GraphQL.EntityFramework/GraphQlExtensions.cs#L5-L28' title='Snippet source file'>snippet source</a> | <a href='#snippet-executewitherrorcheck' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/GraphQL.EntityFramework/GraphQlExtensions.cs#L5-L28' title='Snippet source file'>snippet source</a> | <a href='#snippet-ExecuteWithErrorCheck' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 
@@ -678,7 +694,7 @@ public abstract class InheritedEntity
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public string? Property { get; set; }
-    public IList<DerivedChildEntity> ChildrenFromBase { get; set; } = new List<DerivedChildEntity>();
+    public IList<DerivedChildEntity> ChildrenFromBase { get; set; } = [];
 }
 ```
 <sup><a href='/src/Tests/IntegrationTests/Graphs/Inheritance/InheritedEntity.cs#L1-L6' title='Snippet source file'>snippet source</a> | <a href='#snippet-InheritedEntity.cs' title='Start of snippet'>anchor</a></sup>
@@ -687,11 +703,10 @@ public abstract class InheritedEntity
 <!-- snippet: DerivedEntity.cs -->
 <a id='snippet-DerivedEntity.cs'></a>
 ```cs
-public class DerivedEntity : InheritedEntity
-{
-}
+public class DerivedEntity :
+    InheritedEntity;
 ```
-<sup><a href='/src/Tests/IntegrationTests/Graphs/Inheritance/DerivedEntity.cs#L1-L4' title='Snippet source file'>snippet source</a> | <a href='#snippet-DerivedEntity.cs' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/Tests/IntegrationTests/Graphs/Inheritance/DerivedEntity.cs#L1-L3' title='Snippet source file'>snippet source</a> | <a href='#snippet-DerivedEntity.cs' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 
@@ -706,11 +721,11 @@ public class InterfaceGraphType :
     public InterfaceGraphType(IEfGraphQLService<IntegrationDbContext> graphQlService) :
         base(graphQlService)
     {
-        Field(e => e.Id);
-        Field(e => e.Property, nullable: true);
+        Field(_ => _.Id);
+        Field(_ => _.Property, nullable: true);
         AddNavigationConnectionField<DerivedChildEntity>(
             name: "childrenFromInterface",
-            includeNames: new[] { "ChildrenFromBase" });
+            includeNames: [ "ChildrenFromBase" ]);
     }
 }
 ```
@@ -728,7 +743,7 @@ public class DerivedGraphType :
     {
         AddNavigationConnectionField(
             name: "childrenFromInterface",
-            e => e.Source.ChildrenFromBase);
+            _ => _.Source.ChildrenFromBase);
         AutoMap();
         Interface<InterfaceGraphType>();
         IsTypeOf = obj => obj is DerivedEntity;

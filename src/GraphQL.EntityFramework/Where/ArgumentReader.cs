@@ -1,32 +1,29 @@
 ﻿static class ArgumentReader
 {
-    public static bool TryReadWhere(IResolveFieldContext context, out IEnumerable<WhereExpression> expression)
+    public static bool TryReadWhere(IResolveFieldContext context, out IReadOnlyCollection<WhereExpression> expression)
     {
         expression = ReadList<WhereExpression>(context, "where");
-
-        return expression.Any();
+        return expression.Count != 0;
     }
 
-    public static IEnumerable<OrderBy> ReadOrderBy(IResolveFieldContext context) =>
+    public static IReadOnlyCollection<OrderBy> ReadOrderBy(IResolveFieldContext context) =>
         ReadList<OrderBy>(context, "orderBy");
 
-    public static bool TryReadIds(IResolveFieldContext context, [NotNullWhen(true)] out string[]? result)
+    public static bool TryReadIds(IResolveFieldContext context, [NotNullWhen(true)] out string[]? idValues)
     {
-        string ArgumentToExpression(object argument)
-        {
-            return argument switch
+        static string ArgumentToExpression(object argument) =>
+            argument switch
             {
                 long l => l.ToString(CultureInfo.InvariantCulture),
                 int i => i.ToString(CultureInfo.InvariantCulture),
                 string s => s,
                 _ => throw new($"TryReadId got an 'id' argument of type '{argument.GetType().FullName}' which is not supported.")
             };
-        }
 
         var arguments = context.Arguments;
         if (arguments == null)
         {
-            result = null;
+            idValues = null;
             return false;
         }
 
@@ -35,14 +32,14 @@
 
         if (!containsIds && !containsId)
         {
-            result = null;
+            idValues = null;
             return false;
         }
 
         if (ids.Source == ArgumentSource.FieldDefault &&
             id.Source == ArgumentSource.FieldDefault)
         {
-            result = null;
+            idValues = null;
             return false;
         }
 
@@ -69,7 +66,7 @@
             expressions.AddRange(objCollection.Select(ArgumentToExpression));
         }
 
-        result = expressions.ToArray();
+        idValues = expressions.ToArray();
         return true;
     }
 
@@ -101,12 +98,12 @@
         return result;
     }
 
-    static IEnumerable<T> ReadList<T>(IResolveFieldContext context, string name)
+    static IReadOnlyCollection<T> ReadList<T>(IResolveFieldContext context, string name)
     {
         var argument = context.GetArgument(typeof(T[]), name);
         if (argument is null)
         {
-            return Enumerable.Empty<T>();
+            return [];
         }
 
         return (T[]) argument;

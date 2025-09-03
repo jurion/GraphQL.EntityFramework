@@ -1,15 +1,13 @@
 namespace GraphQL.EntityFramework;
 
-public class EfObjectGraphType<TDbContext, TSource> :
+public class EfObjectGraphType<TDbContext, TSource>(IEfGraphQLService<TDbContext> graphQlService) :
     ObjectGraphType<TSource>
     where TDbContext : DbContext
 {
-    public IEfGraphQLService<TDbContext> GraphQlService { get; }
-
-    public EfObjectGraphType(IEfGraphQLService<TDbContext> graphQlService) => GraphQlService = graphQlService;
+    public IEfGraphQLService<TDbContext> GraphQlService { get; } = graphQlService;
 
     /// <summary>
-    /// Map all un-mapped properties. Underlying behaviour is:
+    /// Map all un-mapped properties. Underlying behavior is:
     ///
     ///  * Calls <see cref="IEfGraphQLService{TDbContext}.AddNavigationField{TSource,TReturn}"/> for all non-list EF navigation properties.
     ///  * Calls <see cref="IEfGraphQLService{TDbContext}.AddNavigationListField{TSource,TReturn}"/> for all EF navigation properties.
@@ -23,9 +21,10 @@ public class EfObjectGraphType<TDbContext, TSource> :
         string name,
         Func<ResolveEfFieldContext<TDbContext, TSource>, IEnumerable<TReturn>>? resolve = null,
         Type? graphType = null,
-        IEnumerable<string>? includeNames = null)
+        IEnumerable<string>? includeNames = null,
+        bool omitQueryArguments = false)
         where TReturn : class =>
-        GraphQlService.AddNavigationConnectionField(this, name, resolve, graphType, includeNames);
+        GraphQlService.AddNavigationConnectionField(this, name, resolve, graphType, includeNames, omitQueryArguments);
 
     public virtual FieldBuilder<TSource, TReturn> AddNavigationField<TReturn>(
         string name,
@@ -39,23 +38,33 @@ public class EfObjectGraphType<TDbContext, TSource> :
         string name,
         Func<ResolveEfFieldContext<TDbContext, TSource>, IEnumerable<TReturn>>? resolve = null,
         Type? graphType = null,
-        IEnumerable<string>? includeNames = null)
+        IEnumerable<string>? includeNames = null,
+        bool omitQueryArguments = false)
         where TReturn : class =>
-        GraphQlService.AddNavigationListField(this, name, resolve, graphType, includeNames);
+        GraphQlService.AddNavigationListField(this, name, resolve, graphType, includeNames, omitQueryArguments);
 
     public virtual ConnectionBuilder<TSource> AddQueryConnectionField<TReturn>(
         string name,
-        Func<ResolveEfFieldContext<TDbContext, TSource>, IQueryable<TReturn>> resolve,
+        Func<ResolveEfFieldContext<TDbContext, TSource>, IOrderedQueryable<TReturn>?> resolve,
         Type? graphType = null)
         where TReturn : class =>
         GraphQlService.AddQueryConnectionField(this, name, resolve, graphType);
 
     public virtual FieldBuilder<TSource, TReturn> AddQueryField<TReturn>(
         string name,
-        Func<ResolveEfFieldContext<TDbContext, TSource>, IQueryable<TReturn>> resolve,
-        Type? graphType = null)
+        Func<ResolveEfFieldContext<TDbContext, TSource>, IQueryable<TReturn>?> resolve,
+        Type? graphType = null,
+        bool omitQueryArguments = false)
         where TReturn : class =>
-        GraphQlService.AddQueryField(this, name, resolve, graphType);
+        GraphQlService.AddQueryField(this, name, resolve, graphType, omitQueryArguments);
+
+    public virtual FieldBuilder<TSource, TReturn> AddQueryField<TReturn>(
+        string name,
+        Func<ResolveEfFieldContext<TDbContext, TSource>, Task<IQueryable<TReturn>?>?> resolve,
+        Type? graphType = null,
+        bool omitQueryArguments = false)
+        where TReturn : class =>
+        GraphQlService.AddQueryField(this, name, resolve, graphType, omitQueryArguments);
 
     public TDbContext ResolveDbContext(IResolveFieldContext<TSource> context) =>
         GraphQlService.ResolveDbContext(context);
@@ -65,10 +74,45 @@ public class EfObjectGraphType<TDbContext, TSource> :
 
     public virtual FieldBuilder<TSource, TReturn> AddSingleField<TReturn>(
         string name,
-        Func<ResolveEfFieldContext<TDbContext, TSource>, IQueryable<TReturn>> resolve,
+        Func<ResolveEfFieldContext<TDbContext, TSource>, IQueryable<TReturn>?> resolve,
         Func<ResolveEfFieldContext<TDbContext, TSource>, TReturn, Task>? mutate = null,
         Type? graphType = null,
-        bool nullable = false)
+        bool nullable = false,
+        bool omitQueryArguments = false,
+        bool idOnly = false)
         where TReturn : class =>
-        GraphQlService.AddSingleField(this, name, resolve, mutate, graphType, nullable);
+        GraphQlService.AddSingleField(this, name, resolve, mutate, graphType, nullable, omitQueryArguments, idOnly);
+
+    public virtual FieldBuilder<TSource, TReturn> AddSingleField<TReturn>(
+        string name,
+        Func<ResolveEfFieldContext<TDbContext, TSource>, Task<IQueryable<TReturn>?>?> resolve,
+        Func<ResolveEfFieldContext<TDbContext, TSource>, TReturn, Task>? mutate = null,
+        Type? graphType = null,
+        bool nullable = false,
+        bool omitQueryArguments = false,
+        bool idOnly = false)
+        where TReturn : class =>
+        GraphQlService.AddSingleField(this, name, resolve, mutate, graphType, nullable, omitQueryArguments, idOnly);
+
+    public virtual FieldBuilder<TSource, TReturn> AddFirstField<TReturn>(
+        string name,
+        Func<ResolveEfFieldContext<TDbContext, TSource>, IQueryable<TReturn>?> resolve,
+        Func<ResolveEfFieldContext<TDbContext, TSource>, TReturn, Task>? mutate = null,
+        Type? graphType = null,
+        bool nullable = false,
+        bool omitQueryArguments = false,
+        bool idOnly = false)
+        where TReturn : class =>
+        GraphQlService.AddFirstField(this, name, resolve, mutate, graphType, nullable, omitQueryArguments, idOnly);
+
+    public virtual FieldBuilder<TSource, TReturn> AddFirstField<TReturn>(
+        string name,
+        Func<ResolveEfFieldContext<TDbContext, TSource>, Task<IQueryable<TReturn>?>?> resolve,
+        Func<ResolveEfFieldContext<TDbContext, TSource>, TReturn, Task>? mutate = null,
+        Type? graphType = null,
+        bool nullable = false,
+        bool omitQueryArguments = false,
+        bool idOnly = false)
+        where TReturn : class =>
+        GraphQlService.AddFirstField(this, name, resolve, mutate, graphType, nullable, omitQueryArguments, idOnly);
 }

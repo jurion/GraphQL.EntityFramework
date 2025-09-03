@@ -3,7 +3,21 @@
 public static class Mapper<TDbContext>
     where TDbContext : DbContext
 {
-    static HashSet<Type> ignoredTypes = new();
+    static List<Func<string, bool>> ignoredNames = [];
+
+    /// <summary>
+    /// Add a property name to exclude from mapping.
+    /// </summary>
+    public static void AddIgnoredName(Func<string, bool> ignore) =>
+        ignoredNames.Add(ignore);
+
+    /// <summary>
+    /// Add a property name to exclude from mapping.
+    /// </summary>
+    public static void AddIgnoredName(string name) =>
+        ignoredNames.Add(_=> string.Equals(_, name, StringComparison.OrdinalIgnoreCase));
+
+    static HashSet<Type> ignoredTypes = [];
 
     /// <summary>
     /// Add a property type to exclude from mapping.
@@ -42,7 +56,7 @@ public static class Mapper<TDbContext>
 
             if (navigations is not null)
             {
-                list.AddRange(navigations.Select(x => x.Name));
+                list.AddRange(navigations.Select(_ => _.Name));
             }
 
             MapProperties(graph, type, list);
@@ -56,7 +70,7 @@ public static class Mapper<TDbContext>
     static void MapProperties<TSource>(ComplexGraphType<TSource> graph, Type type, IReadOnlyList<string>? exclusions)
     {
         var publicProperties = type.GetPublicProperties()
-            .OrderBy(x => x.Name);
+            .OrderBy(_ => _.Name);
         foreach (var property in publicProperties)
         {
             if (ShouldIgnore(graph, property.Name, property.PropertyType, exclusions))
@@ -95,12 +109,12 @@ public static class Mapper<TDbContext>
             if (navigation.IsCollection)
             {
                 var genericMethod = addNavigationListMethod.MakeGenericMethod(typeof(TSource), navigation.Type);
-                genericMethod.Invoke(null, new object[] { graph, graphService, navigation });
+                genericMethod.Invoke(null, [ graph, graphService, navigation ]);
             }
             else
             {
                 var genericMethod = addNavigationMethod.MakeGenericMethod(typeof(TSource), navigation.Type);
-                genericMethod.Invoke(null, new object[] { graph, graphService, navigation });
+                genericMethod.Invoke(null, [ graph, graphService, navigation ]);
             }
         }
         catch (TargetInvocationException exception)
@@ -133,7 +147,7 @@ public static class Mapper<TDbContext>
 
     public record NavigationKey(Type Type, string Name);
 
-    static ConcurrentDictionary<NavigationKey, object> navigationFuncs = new();
+    static ConcurrentDictionary<NavigationKey, object> navigationFuncs = [];
 
     internal static Func<ResolveEfFieldContext<TDbContext, TSource>, TReturn> NavigationFunc<TSource, TReturn>(string name)
     {
@@ -141,7 +155,7 @@ public static class Mapper<TDbContext>
 
         return (Func<ResolveEfFieldContext<TDbContext, TSource>, TReturn>)navigationFuncs.GetOrAdd(
             key,
-            x => NavigationExpression<TSource, TReturn>(x.Name).Compile());
+            _ => NavigationExpression<TSource, TReturn>(_.Name).Compile());
     }
 
     internal static Expression<Func<ResolveEfFieldContext<TDbContext, TSource>, TReturn>> NavigationExpression<TSource, TReturn>(string name)
@@ -161,8 +175,10 @@ public static class Mapper<TDbContext>
     {
         var (compile, propertyGraphType) = Compile<TSource>(property);
         var resolver = new SimpleFieldResolver<TSource>(compile);
+#pragma warning disable GQL012
         graph.Field(type: propertyGraphType, name: property.Name)
             .Resolve(resolver);
+#pragma warning restore GQL012
     }
 
     static bool ShouldIgnore(IComplexGraphType graphType, string name, Type propertyType, IReadOnlyList<string>? localIgnores = null)
@@ -173,6 +189,11 @@ public static class Mapper<TDbContext>
             {
                 return true;
             }
+        }
+
+        if (ignoredNames.Any(_ => _.Invoke(name)))
+        {
+            return true;
         }
 
         if (FieldExists(graphType, name))
@@ -239,5 +260,5 @@ public static class Mapper<TDbContext>
     }
 
     static bool FieldExists(IComplexGraphType graphType, string name) =>
-        graphType.Fields.Any(x => string.Equals(x.Name, name, StringComparison.OrdinalIgnoreCase));
+        graphType.Fields.Any(_ => string.Equals(_.Name, name, StringComparison.OrdinalIgnoreCase));
 }

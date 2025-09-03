@@ -6,9 +6,9 @@
     {
         AddNavigationField(
             name: "parentAlias",
-            resolve: context => context.Source.Parent,
+            resolve: _ => _.Source.Parent,
             graphType: typeof(ParentGraphType),
-            includeNames: new[] {"Parent"});
+            includeNames: ["Parent"]);
         AutoMap();
     }
 }

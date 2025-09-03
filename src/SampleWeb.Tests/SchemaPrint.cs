@@ -1,4 +1,5 @@
-﻿[UsesVerify]
+﻿using GraphQL;
+
 public class SchemaPrint
 {
     [Fact]
@@ -10,8 +11,7 @@ public class SchemaPrint
 
         await using var provider = services.BuildServiceProvider();
         var schema = provider.GetRequiredService<ISchema>();
-        var printer = new SchemaPrinter(schema);
-        var print = printer.Print();
+        var print = schema.Print();
         await Verify(print);
     }
 }

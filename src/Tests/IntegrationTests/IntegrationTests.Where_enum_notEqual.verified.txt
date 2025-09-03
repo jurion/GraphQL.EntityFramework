@@ -1,0 +1,20 @@
+﻿{
+  target:
+{
+  "data": {
+    "enumEntities": [
+      {
+        "id": "Guid_1"
+      }
+    ]
+  }
+},
+  sql: {
+    Text:
+select e.Id,
+       e.Property
+from   EnumEntities as e
+where  e.Property <> 4
+       or e.Property is null
+  }
+}

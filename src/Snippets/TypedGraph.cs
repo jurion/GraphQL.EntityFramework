@@ -12,11 +12,11 @@ public class TypedGraph
         {
             AddNavigationListField(
                 name: "employees",
-                resolve: context => context.Source.Employees);
+                resolve: _ => _.Source.Employees);
             AddNavigationConnectionField(
                 name: "employeesConnection",
-                resolve: context => context.Source.Employees,
-                includeNames: new[] {"Employees"});
+                resolve: _ => _.Source.Employees,
+                includeNames: ["Employees"]);
             AutoMap();
         }
     }
@@ -30,9 +30,7 @@ public class TypedGraph
         public List<Employee> Employees { get; set; } = null!;
     }
 
-    public class Employee
-    {
-    }
+    public class Employee;
 
     public class MyDbContext :
         DbContext
@@ -41,7 +39,5 @@ public class TypedGraph
     }
 
     public class EmployeeGraph :
-        ObjectGraphType<Employee>
-    {
-    }
+        ObjectGraphType<Employee>;
 }

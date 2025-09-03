@@ -8,7 +8,8 @@ partial class EfGraphQLService<TDbContext>
         string name,
         Func<ResolveEfFieldContext<TDbContext, TSource>, IEnumerable<TReturn>>? resolve = null,
         Type? itemGraphType = null,
-        IEnumerable<string>? includeNames = null)
+        IEnumerable<string>? includeNames = null,
+        bool omitQueryArguments = false)
         where TReturn : class
     {
         Guard.AgainstWhiteSpace(nameof(name), name);
@@ -18,20 +19,30 @@ partial class EfGraphQLService<TDbContext>
         {
             Name = name,
             Type = MakeListGraphType<TReturn>(itemGraphType),
-            Arguments = ArgumentAppender.GetQueryArguments(hasId, true),
+            Arguments = ArgumentAppender.GetQueryArguments(hasId, true, false),
         };
         IncludeAppender.SetIncludeMetadata(field, name, includeNames);
 
         if (resolve is not null)
         {
-            field.Resolver = new FuncFieldResolver<TSource, IEnumerable<TReturn>>(
-                async context =>
+            field.Resolver = new FuncFieldResolver<TSource, IEnumerable<TReturn>>(async context =>
+            {
+                var fieldContext = BuildContext(context);
+                var result = resolve(fieldContext);
+
+                if (result is IQueryable)
                 {
-                    var fieldContext = BuildContext(context);
-                    var result = resolve(fieldContext);
-                    result = result.ApplyGraphQlArguments(hasId, context);
-                    return await fieldContext.Filters.ApplyFilter(result, context.UserContext, context.User);
-                });
+                    throw new("This API expects the resolver to return a IEnumerable, not an IQueryable. Instead use AddQueryField.");
+                }
+
+                result = result.ApplyGraphQlArguments(hasId, context, omitQueryArguments);
+                if (fieldContext.Filters == null)
+                {
+                    return result;
+                }
+
+                return await fieldContext.Filters.ApplyFilter(result, context.UserContext, fieldContext.DbContext, context.User);
+            });
         }
 
         graph.AddField(field);

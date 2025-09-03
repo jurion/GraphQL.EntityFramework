@@ -12,13 +12,11 @@
     ]
   }
 },
-  sql: [
-    {
-      HasTransaction: false,
-      Text:
-SELECT [c].[Id], [c].[Property]
-FROM [CustomTypeEntities] AS [c]
-ORDER BY [c].[Property]
-    }
-  ]
+  sql: {
+    Text:
+select   c.Id,
+         c.Property
+from     CustomTypeEntities as c
+order by c.Property
+  }
 }

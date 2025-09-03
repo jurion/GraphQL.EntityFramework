@@ -1,16 +1,14 @@
-﻿public class SampleDbContext :
-    DbContext
+using Microsoft.EntityFrameworkCore.Diagnostics;
+
+public class SampleDbContext(DbContextOptions options) :
+    DbContext(options)
 {
     public DbSet<Employee> Employees { get; set; } = null!;
+    public DbSet<Device> Devices { get; set; } = null!;
     public DbSet<Company> Companies { get; set; } = null!;
     public DbSet<OrderDetail> OrderDetails { get; set; } = null!;
 
     public static IModel StaticModel { get; } = BuildStaticModel();
-
-    public SampleDbContext(DbContextOptions options) :
-        base(options)
-    {
-    }
 
     static IModel BuildStaticModel()
     {
@@ -20,16 +18,22 @@
         return dbContext.Model;
     }
 
-    protected override void OnModelCreating(ModelBuilder modelBuilder)
-    {
-        modelBuilder.Entity<Company>()
-            .HasMany(c => c.Employees)
-            .WithOne(e => e.Company)
-            .IsRequired();
-        modelBuilder.Entity<Employee>();
+    protected override void OnConfiguring(DbContextOptionsBuilder builder) =>
+        builder.ConfigureWarnings(_ => _.Ignore(CoreEventId.RowLimitingOperationWithoutOrderByWarning));
 
-        var order = modelBuilder.Entity<OrderDetail>();
-        order.OwnsOne(p => p.BillingAddress);
-        order.OwnsOne(p => p.ShippingAddress);
+    protected override void OnModelCreating(ModelBuilder builder)
+    {
+        builder.Entity<Company>()
+            .HasMany(_ => _.Employees)
+            .WithOne(_ => _.Company)
+            .IsRequired();
+        builder.Entity<Device>();
+        builder.Entity<Employee>()
+            .HasMany(x => x.Devices)
+            .WithMany(x => x.Employees)
+            .UsingEntity("EmployeeDevice");
+        var order = builder.Entity<OrderDetail>();
+        order.OwnsOne(_ => _.BillingAddress);
+        order.OwnsOne(_ => _.ShippingAddress);
     }
 }

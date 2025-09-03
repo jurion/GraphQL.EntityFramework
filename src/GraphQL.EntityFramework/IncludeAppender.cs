@@ -1,10 +1,5 @@
-﻿class IncludeAppender
+﻿class IncludeAppender(IReadOnlyDictionary<Type, IReadOnlyList<Navigation>> navigations)
 {
-    IReadOnlyDictionary<Type, IReadOnlyList<Navigation>> navigations;
-
-    public IncludeAppender(IReadOnlyDictionary<Type, IReadOnlyList<Navigation>> navigations) =>
-        this.navigations = navigations;
-
     public IQueryable<TItem> AddIncludes<TItem>(IQueryable<TItem> query, IResolveFieldContext context)
         where TItem : class
     {
@@ -117,7 +112,7 @@
     {
         foreach (var subField in subFields)
         {
-            var single = graph.Fields.SingleOrDefault(x => x.Name == subField.Name);
+            var single = graph.Fields.SingleOrDefault(_ => _.Name == subField.Name);
             if (single is not null)
             {
                 AddField(list, subField, subField.SelectionSet!, parentPath, single, navigationProperties, context);
@@ -147,7 +142,7 @@
     }
 
     static string[] FieldNameToArray(string fieldName) =>
-        new[] { char.ToUpperInvariant(fieldName[0]) + fieldName.Substring(1) };
+        [ char.ToUpperInvariant(fieldName[0]) + fieldName[1..] ];
 
     static bool TryGetIncludeMetadata(FieldType fieldType, [NotNullWhen(true)] out string[]? value)
     {

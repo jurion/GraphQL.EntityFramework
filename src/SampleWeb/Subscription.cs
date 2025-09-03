@@ -62,7 +62,7 @@
 //        SampleDbContext dbContext,
 //        long lastId,
 //        int take = 1,
-//        CancellationToken token = default)
+//        Cancellation cancellation = default)
 //    {
 //        var returnType = dbContext.Companies;
 
@@ -91,7 +91,7 @@
 
 //    static IResolveFieldContext ResolveFieldContext(
 //        SampleDbContext dbContext,
-//        CancellationToken token,
+//        Cancellation cancellation,
 //        Document document,
 //        ISchema schema)
 //    {
@@ -101,7 +101,6 @@
 //        {
 //            Document = document,
 //            Schema = schema,
-//            UserContext = new UserContext(dbContext),
 //            Variables = variableValues,
 //            Fragments = document.Fragments,
 //            CancellationToken = token,
@@ -141,7 +140,6 @@
 //            Document = context.Document,
 //            Fragments = context.Fragments,
 //            RootValue = context.RootValue,
-//            UserContext = context.UserContext,
 //            Operation = context.Operation,
 //            Variables = context.Variables,
 //            CancellationToken = context.CancellationToken,

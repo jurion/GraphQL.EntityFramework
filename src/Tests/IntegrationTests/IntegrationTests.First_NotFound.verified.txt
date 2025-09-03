@@ -1,0 +1,13 @@
+﻿{
+  target: {
+    Type: FirstEntityNotFoundException,
+    Message: Not found
+  },
+  sql: {
+    Text:
+select top (1) p.Id,
+               p.Property
+from   ParentEntities as p
+where  p.Id = '00000000-0000-0000-0000-000000000001'
+  }
+}

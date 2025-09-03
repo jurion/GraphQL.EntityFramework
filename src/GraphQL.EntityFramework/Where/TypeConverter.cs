@@ -2,9 +2,14 @@
 {
     public static IList ConvertStringsToList(string?[] values, MemberInfo property)
     {
-        if (values.Length != values.Distinct().Count())
+        var hash = new HashSet<string?>();
+        var duplicates = values.Where(_ => !hash.Add(_)).ToArray();
+        if (duplicates.Length != 0)
         {
-            throw new("Duplicates detected for In expression.");
+            throw new($"""
+                       Duplicates detected for In expression. Duplicates:
+                       {string.Join(" * ", duplicates)}
+                       """);
         }
 
         var hasNull = values.Contains(null);
@@ -15,7 +20,7 @@
             throw new($"Null passed to In expression for non nullable type '{type.FullName}'.");
         }
 
-        var list = ConvertStringsToListInternal(values.Where(x => x is not null).Select(x => x!), type);
+        var list = ConvertStringsToListInternal(values.Where(_ => _ is not null).Select(_ => _!), type);
         if (hasNull)
         {
             list.Add(null);
@@ -40,7 +45,7 @@
         }
         if (type == typeof(Guid?))
         {
-            return values.Select(_ => (Guid?)Guid.Parse(_)).ToList();
+            return values.Select(_ => (Guid?)new Guid(_)).ToList();
         }
 
         if (type == typeof(bool))
@@ -142,13 +147,47 @@
             return values.Select(_ => (DateTimeOffset?)DateTimeOffset.Parse(_)).ToList();
         }
 
+        if (type.IsEnum)
+        {
+            var getList = enumListMethod.MakeGenericMethod(type);
+            return (IList)getList.Invoke(null, [values])!;
+        }
+
         if (type.TryGetEnumType(out var enumType))
         {
-            return values.Select(_ => Enum.Parse(enumType, _, true))
-                .ToList();
+            var getList = nullableEnumListMethod.MakeGenericMethod(enumType);
+            return (IList)getList.Invoke(null, [values])!;
         }
 
         throw new($"Could not convert strings to {type.FullName}.");
+    }
+
+    static MethodInfo enumListMethod = typeof(TypeConverter)
+        .GetMethod("GetEnumList", BindingFlags.Static | BindingFlags.NonPublic)!;
+    static List<T> GetEnumList<T>(IEnumerable<string> values)
+        where T : struct
+    {
+        var list = new List<T>();
+        foreach (var value in values)
+        {
+            list.Add(Enum.Parse<T>(value, true));
+        }
+
+        return list;
+    }
+
+    static MethodInfo nullableEnumListMethod = typeof(TypeConverter)
+        .GetMethod("GetNullableEnumList", BindingFlags.Static | BindingFlags.NonPublic)!;
+    static List<T?> GetNullableEnumList<T>(IEnumerable<string> values)
+        where T : struct
+    {
+        var list = new List<T?>();
+        foreach (var value in values)
+        {
+            list.Add(Enum.Parse<T>(value, true));
+        }
+
+        return list;
     }
 
     public static object? ConvertStringToType(string? value, Type type)
@@ -186,7 +225,7 @@
 
         if (type == typeof(Guid))
         {
-            return Guid.Parse(value!);
+            return new Guid(value!);
         }
 
         if (type.IsEnum)

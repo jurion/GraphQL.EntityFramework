@@ -4,9 +4,8 @@ public partial class EfGraphQLService<TDbContext> :
     IEfGraphQLService<TDbContext>
     where TDbContext : DbContext
 {
-    ResolveFilters? resolveFilters;
+    ResolveFilters<TDbContext>? resolveFilters;
     bool disableTracking;
-    bool disableAsync;
     ResolveDbContext<TDbContext> resolveDbContext;
     IReadOnlyDictionary<Type, List<string>> keyNames;
 
@@ -14,13 +13,11 @@ public partial class EfGraphQLService<TDbContext> :
     public EfGraphQLService(
         IModel model,
         ResolveDbContext<TDbContext> resolveDbContext,
-        ResolveFilters? resolveFilters = null,
-        bool disableTracking = false,
-        bool disableAsync = false)
+        ResolveFilters<TDbContext>? resolveFilters = null,
+        bool disableTracking = false)
     {
         this.resolveFilters = resolveFilters;
         this.disableTracking = disableTracking;
-        this.disableAsync = disableAsync;
         this.resolveDbContext = resolveDbContext;
 
         keyNames = model.GetKeyNames();
@@ -65,16 +62,28 @@ public partial class EfGraphQLService<TDbContext> :
             User = context.User
         };
 
-    public TDbContext ResolveDbContext(IResolveFieldContext context) =>
-        resolveDbContext(context.UserContext);
-
-    Filters ResolveFilter<TSource>(IResolveFieldContext<TSource> context)
+    public TDbContext ResolveDbContext(IResolveFieldContext fieldContext)
     {
-        var filter = resolveFilters?.Invoke(context.UserContext);
-        return filter ?? NullFilters.Instance;
+        var userContext = fieldContext.UserContext;
+        var executionContext = fieldContext.ExecutionContext;
+        var requestServices = executionContext.RequestServices ?? executionContext.ExecutionOptions.RequestServices;
+        return resolveDbContext(userContext, requestServices);
     }
+
+    Filters<TDbContext>? ResolveFilter<TSource>(IResolveFieldContext<TSource> context) =>
+        resolveFilters?.Invoke(context.UserContext);
 
     public IQueryable<TItem> AddIncludes<TItem>(IQueryable<TItem> query, IResolveFieldContext context)
         where TItem : class =>
         includeAppender.AddIncludes(query, context);
+
+    static string JoinKeys(IReadOnlyCollection<string>? names)
+    {
+        if (names == null)
+        {
+            return "";
+        }
+
+        return string.Join(", ", names);
+    }
 }

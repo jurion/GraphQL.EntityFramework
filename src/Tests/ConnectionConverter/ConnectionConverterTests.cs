@@ -1,20 +1,16 @@
-﻿[UsesVerify]
-public class ConnectionConverterTests
+﻿public class ConnectionConverterTests
 {
     static ConnectionConverterTests() =>
         sqlInstance = new(
             buildTemplate: async dbContext =>
             {
                 await dbContext.Database.EnsureCreatedAsync();
-                dbContext.AddRange(list.Select(x => new Entity {Property = x}));
+                dbContext.AddRange(list.Select(_ => new Entity {Property = _}));
                 await dbContext.SaveChangesAsync();
             },
             constructInstance: builder => new(builder.Options));
 
-    static List<string> list = new()
-    {
-        "a", "b", "c", "d", "e", "f", "g", "h", "i", "j"
-    };
+    static List<string> list = ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j"];
 
     static SqlInstance<MyContext> sqlInstance;
 
@@ -46,8 +42,8 @@ public class ConnectionConverterTests
         var fieldContext = new ResolveFieldContext<string>();
         await using var database = await sqlInstance.Build(databaseSuffix: $"{first.GetValueOrDefault(0)}{after.GetValueOrDefault(0)}{last.GetValueOrDefault(0)}{before.GetValueOrDefault(0)}");
         var entities = database.Context.Entities;
-        var connection = await ConnectionConverter.ApplyConnectionContext<string, Entity>(entities.OrderBy(x=>x.Property), first, after, last, before, fieldContext, new());
-        await Verify(connection.Items!.OrderBy(x => x!.Property))
+        var connection = await ConnectionConverter.ApplyConnectionContext<MyContext, string, Entity>(entities.OrderBy(x=>x.Property), first, after, last, before, fieldContext, new(), Cancel.None,database.Context);
+        await Verify(connection.Items!.OrderBy(_ => _!.Property))
             .UseParameters(first, after, last, before);
     }
 
@@ -77,7 +73,6 @@ public class ConnectionConverterTests
 
     public Task List(int? first, int? after, int? last, int? before)
     {
-
         var connection = ConnectionConverter.ApplyConnectionContext(list, first, after, last, before);
         return Verify(connection).UseParameters(first, after, last, before);
     }
@@ -88,15 +83,10 @@ public class ConnectionConverterTests
         public string? Property { get; set; }
     }
 
-    public class MyContext :
-        DbContext
+    public class MyContext(DbContextOptions options) :
+        DbContext(options)
     {
         public DbSet<Entity> Entities { get; set; } = null!;
-
-        public MyContext(DbContextOptions options) :
-            base(options)
-        {
-        }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder) =>
             modelBuilder.Entity<Entity>();

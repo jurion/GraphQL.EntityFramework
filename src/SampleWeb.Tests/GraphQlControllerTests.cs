@@ -1,9 +1,9 @@
-﻿using Newtonsoft.Json;
+﻿using System.Net;
+using Newtonsoft.Json;
 // ReSharper disable PrivateFieldCanBeConvertedToLocalVariable
 
 #region GraphQlControllerTests
 
-[UsesVerify]
 public class GraphQlControllerTests
 {
     static HttpClient client;
@@ -19,7 +19,7 @@ public class GraphQlControllerTests
             request =>
             {
                 var headers = request.Headers;
-                headers["Sec-WebSocket-Protocol"] = "graphql-ws";
+                headers.SecWebSocketProtocol = "graphql-ws";
             };
         clientQueryExecutor = new(JsonConvert.SerializeObject);
     }
@@ -27,7 +27,8 @@ public class GraphQlControllerTests
     [Fact]
     public async Task Get()
     {
-        var query = """
+        var query =
+            """
             {
               companies
               {
@@ -43,7 +44,8 @@ public class GraphQlControllerTests
     [Fact]
     public async Task Post()
     {
-        var query = """
+        var query =
+            """
             {
               companies
               {
@@ -59,7 +61,8 @@ public class GraphQlControllerTests
     [Fact]
     public async Task Single()
     {
-        var query = """
+        var query =
+            """
             query ($id: ID!)
             {
               company(id:$id)
@@ -79,9 +82,33 @@ public class GraphQlControllerTests
     }
 
     [Fact]
+    public async Task First()
+    {
+        var query =
+            """
+            query ($id: ID!)
+            {
+              companyFirst(id:$id)
+              {
+                id
+              }
+            }
+            """;
+        var variables = new
+        {
+            id = "1"
+        };
+
+        using var response = await clientQueryExecutor.ExecuteGet(client, query, variables);
+        response.EnsureSuccessStatusCode();
+        await Verify(await response.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
     public async Task Single_not_found()
     {
-        var query = """
+        var query =
+            """
             query ($id: ID!)
             {
               company(id:$id)
@@ -95,15 +122,37 @@ public class GraphQlControllerTests
             id = "99"
         };
 
-        using var response = await clientQueryExecutor.ExecuteGet(client, query, variables);
-        var result = await response.Content.ReadAsStringAsync();
-        Assert.Contains("Not found", result);
+        await ThrowsTask(() => clientQueryExecutor.ExecuteGet(client, query, variables))
+            .IgnoreStackTrace();
+    }
+
+    [Fact]
+    public async Task First_not_found()
+    {
+        var query =
+            """
+            query ($id: ID!)
+            {
+              companyFirst(id:$id)
+              {
+                id
+              }
+            }
+            """;
+        var variables = new
+        {
+            id = "99"
+        };
+
+        var response = await clientQueryExecutor.ExecuteGet(client, query, variables);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
 
     [Fact]
     public async Task Variable()
     {
-        var query = """
+        var query =
+            """
             query ($id: ID!)
             {
               companies(ids:[$id])
@@ -150,7 +199,8 @@ public class GraphQlControllerTests
     [Fact]
     public async Task Employee_summary()
     {
-        var query = """
+        var query =
+            """
             query {
               employeeSummary {
                 companyId
@@ -166,13 +216,14 @@ public class GraphQlControllerTests
     [Fact]
     public async Task Complex_query_result()
     {
-        var query = """
+        var query =
+            """
             query {
               employees (
                 where: [
                   {groupedExpressions: [
                     {path: "content", comparison: contains, value: "4", connector: or},
-            
+
                       { path: "content", comparison: contains, value: "2"}
                   ], connector: and},
                   {path: "age", comparison: greaterThanOrEqual, value: "31"}

@@ -63,58 +63,73 @@ static class ConnectionConverter
         var page = list.Skip(skip).Take(take).ToList();
         if (reverse)
         {
-            page.Reverse();
+           page.Reverse();
         }
         return Build(skip, take, count, page);
     }
 
-    public static Task<Connection<TItem>> ApplyConnectionContext<TSource, TItem>(
-        this IQueryable<TItem> list,
+    public static Task<Connection<TItem>> ApplyConnectionContext<TDbContext, TSource, TItem>(
+        this IQueryable<TItem> queryable,
         int? first,
         string afterString,
         int? last,
         string beforeString,
         IResolveFieldContext<TSource> context,
-        CancellationToken cancellation,
-        Filters filters)
+        Cancel cancel,
+        Filters<TDbContext>? filters,
+        TDbContext data)
         where TItem : class
+        where TDbContext : DbContext
     {
         Parse(afterString, beforeString, out var after, out var before);
-        return ApplyConnectionContext(list, first, after, last, before, context, filters, cancellation);
+        return ApplyConnectionContext(queryable, first, after, last, before, context, filters, cancel, data);
     }
 
-    public static async Task<Connection<TItem>> ApplyConnectionContext<TSource, TItem>(
-        IQueryable<TItem> list,
+    public static async Task<Connection<TItem>> ApplyConnectionContext<TDbContext, TSource, TItem>(
+        IQueryable<TItem> queryable,
         int? first,
         int? after,
         int? last,
         int? before,
         IResolveFieldContext<TSource> context,
-        Filters filters,
-        CancellationToken cancellation = default)
+        Filters<TDbContext>? filters,
+        Cancel cancel,
+        TDbContext data)
         where TItem : class
+        where TDbContext : DbContext
     {
-        var shouldCount = (context?.SubFields?.Any(x => x.Key.ToLower() == "totalcount") ?? false) || (context?.SubFields?.Any(x => x.Key.ToLower() == "pageinfo") ?? false);
-        var count = shouldCount ? await list.CountAsync(cancellation) : 0;
-        cancellation.ThrowIfCancellationRequested();
+        if (queryable is not IOrderedQueryable<TItem>)
+        {
+            throw new($"Connections require ordering. Either order the IQueryable being passed to AddQueryConnectionField, or use an orderBy in the query. Field: {context.FieldDefinition.Name}");
+        }
+        var shouldCount =
+            (context.SubFields?.Any(x => string.Equals(x.Key, "totalcount", StringComparison.OrdinalIgnoreCase)) ?? false)
+            || (context.SubFields?.Any(x => string.Equals(x.Key, "pageinfo", StringComparison.OrdinalIgnoreCase)) ?? false)
+            || before != null
+            || last != null;
+
+        var count = shouldCount ? await queryable.CountAsync(cancel) : 0;
+        cancel.ThrowIfCancellationRequested();
         if (last is null)
         {
-            return await First(list, first.GetValueOrDefault(0), after, before, count, context!, filters, cancellation);
+            return await First(queryable, first.GetValueOrDefault(0), after, before, count, context, filters, cancel, data);
         }
 
-        return await Last(list, last.Value, after, before, count, context!, filters, cancellation);
+        return await Last(queryable, last.Value, after, before, count, context, filters, cancel, data);
     }
 
-    static Task<Connection<TItem>> First<TSource, TItem>(
-        IQueryable<TItem> list,
+    static Task<Connection<TItem>> First<TDbContext, TSource, TItem>(
+        IQueryable<TItem> queryable,
         int first,
         int? after,
         int? before,
         int count,
         IResolveFieldContext<TSource> context,
-        Filters filters,
-        CancellationToken cancellation)
+        Filters<TDbContext>? filters,
+        Cancel cancel,
+        TDbContext data)
         where TItem : class
+        where TDbContext : DbContext
     {
         int skip;
         if (before is null)
@@ -126,19 +141,21 @@ static class ConnectionConverter
             skip = Math.Max(before.Value - first, 0);
         }
 
-        return Range(list, skip, first, count, context, filters, cancellation);
+        return Range(queryable, skip, first, count, context, filters, cancel, data);
     }
 
-    static Task<Connection<TItem>> Last<TSource, TItem>(
-        IQueryable<TItem> list,
+    static Task<Connection<TItem>> Last<TDbContext, TSource, TItem>(
+        IQueryable<TItem> queryable,
         int last,
         int? after,
         int? before,
         int count,
         IResolveFieldContext<TSource> context,
-        Filters filters,
-        CancellationToken cancellation)
+        Filters<TDbContext>? filters,
+        Cancel cancel,
+        TDbContext data)
         where TItem : class
+        where TDbContext : DbContext
     {
         int skip;
         if (after is null)
@@ -152,25 +169,30 @@ static class ConnectionConverter
             skip = after.Value + 1;
         }
 
-        return Range(list, skip, take: last, count, context, filters, cancellation);
+        return Range(queryable, skip, take: last, count, context, filters, cancel, data);
     }
 
-    static async Task<Connection<TItem>> Range<TSource, TItem>(
-        IQueryable<TItem> list,
+    static async Task<Connection<TItem>> Range<TDbContext, TSource, TItem>(
+        IQueryable<TItem> queryable,
         int skip,
         int take,
         int count,
         IResolveFieldContext<TSource> context,
-        Filters filters,
-        CancellationToken cancellation)
+        Filters<TDbContext>? filters,
+        Cancel cancel,
+        TDbContext data)
         where TItem : class
+        where TDbContext : DbContext
     {
-        var page = list.Skip(skip).Take(take);
+        var page = queryable.Skip(skip).Take(take);
         QueryLogger.Write(page);
-        IEnumerable<TItem> result = await page.ToListAsync(cancellation);
-        result = await filters.ApplyFilter(result, context.UserContext, context.User);
+        IEnumerable<TItem> result = await page.ToListAsync(cancel);
+        if (filters != null)
+        {
+            result = await filters.ApplyFilter(result, context.UserContext, data, context.User);
+        }
 
-        cancellation.ThrowIfCancellationRequested();
+        cancel.ThrowIfCancellationRequested();
         return Build(skip, take, count, result);
     }
 

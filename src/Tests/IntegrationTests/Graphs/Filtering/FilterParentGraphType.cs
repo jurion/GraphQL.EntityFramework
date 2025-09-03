@@ -6,8 +6,8 @@
     {
         AddNavigationConnectionField(
             name: "childrenConnection",
-            resolve: context => context.Source.Children,
-            includeNames: new[] {"Children"});
+            resolve: _ => _.Source.Children,
+            includeNames: ["Children"]);
         AutoMap();
     }
 }

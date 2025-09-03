@@ -6,15 +6,11 @@ public class WhereExpressionGraph :
     public WhereExpressionGraph()
     {
         Name = nameof(WhereExpression);
-        Field(x => x.Path, true);
-        Field<ComparisonGraph>("comparison")
-            .Resolve(_ => _.Source.Comparison);
-        Field(x => x.Negate, true);
-        Field<EnumerationGraphType<StringComparison>>("case")
-            .Resolve( _ => _.Source.Case);
-        Field(x => x.Value, true);
-        Field<ConnectorGraph>("connector")
-            .Resolve(_ => _.Source.Connector);
+        Field(_ => _.Path, true);
+        Field<ComparisonGraph>("comparison");
+        Field(_ => _.Negate, true);
+        Field(_ => _.Value, true);
+        Field<ConnectorGraph>("connector");
         Field<ListGraphType<WhereExpressionGraph>>("GroupedExpressions");
     }
 }

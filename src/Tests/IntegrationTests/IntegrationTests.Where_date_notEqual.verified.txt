@@ -1,0 +1,20 @@
+﻿{
+  target:
+{
+  "data": {
+    "dateEntities": [
+      {
+        "id": "Guid_1"
+      }
+    ]
+  }
+},
+  sql: {
+    Text:
+select d.Id,
+       d.Property
+from   DateEntities as d
+where  d.Property <> '2020-10-01'
+       or d.Property is null
+  }
+}

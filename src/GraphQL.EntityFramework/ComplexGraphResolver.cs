@@ -1,17 +1,12 @@
 ﻿static class ComplexGraphResolver
 {
-    class Resolved
+    class Resolved(Type? entityType, IComplexGraphType? graph)
     {
-        public Resolved(Type? entityType, IComplexGraphType? graph)
-        {
-            EntityType = entityType;
-            Graph = graph;
-        }
-        public readonly IComplexGraphType? Graph;
-        public readonly Type? EntityType;
+        public readonly IComplexGraphType? Graph = graph;
+        public readonly Type? EntityType = entityType;
     }
 
-    static ConcurrentDictionary<IGraphType, Resolved> cache = new();
+    static ConcurrentDictionary<IGraphType, Resolved> cache = [];
 
     public static bool TryGetComplexGraph(this FieldType fieldType, [NotNullWhen(true)] out IComplexGraphType? graph)
     {

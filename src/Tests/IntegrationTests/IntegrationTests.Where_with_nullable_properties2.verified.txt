@@ -9,13 +9,11 @@
     ]
   }
 },
-  sql: [
-    {
-      HasTransaction: false,
-      Text:
-SELECT [w].[Id], [w].[Nullable]
-FROM [WithNullableEntities] AS [w]
-WHERE [w].[Nullable] = 10
-    }
-  ]
+  sql: {
+    Text:
+select w.Id,
+       w.Nullable
+from   WithNullableEntities as w
+where  w.Nullable = 10
+  }
 }

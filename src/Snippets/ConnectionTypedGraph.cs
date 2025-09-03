@@ -11,27 +11,21 @@ class ConnectionTypedGraph
             base(graphQlService) =>
             AddNavigationConnectionField(
                 name: "employees",
-                resolve: context => context.Source.Employees);
+                resolve: _ => _.Source.Employees);
     }
 
     #endregion
 
     internal class MyDbContext :
-        DbContext
-    {
-    }
+        DbContext;
 
     public class Company
     {
         public List<Employee> Employees { get; set; } = null!;
     }
 
-    public class Employee
-    {
-    }
+    public class Employee;
 
     public class EmployeeGraph :
-        ObjectGraphType<Employee>
-    {
-    }
+        ObjectGraphType<Employee>;
 }

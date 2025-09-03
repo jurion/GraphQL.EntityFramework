@@ -1,0 +1,34 @@
+﻿{
+  target:
+{
+  "data": {
+    "stringEntities": [
+      {
+        "id": "Guid_1",
+        "property": "ab"
+      },
+      {
+        "id": "Guid_2",
+        "property": "abc"
+      },
+      {
+        "id": "Guid_3",
+        "property": "b"
+      },
+      {
+        "id": "Guid_4",
+        "property": "bc"
+      }
+    ]
+  }
+},
+  sql: {
+    Text:
+select   s.Id,
+         s.Property
+from     StringEntities as s
+where    s.Property is not null
+         and cast (CHARINDEX(N'B', s.Property) as int) - 1 <> -1
+order by s.Property
+  }
+}

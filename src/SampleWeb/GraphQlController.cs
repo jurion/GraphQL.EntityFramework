@@ -5,28 +5,20 @@ using Microsoft.AspNetCore.Mvc;
 #region GraphQlController
 [Route("[controller]")]
 [ApiController]
-public class GraphQlController :
+public class GraphQlController(ISchema schema, IDocumentExecuter executer) :
     Controller
 {
-    IDocumentExecuter executer;
-    ISchema schema;
     static GraphQLSerializer writer = new(true);
-
-    public GraphQlController(ISchema schema, IDocumentExecuter executer)
-    {
-        this.schema = schema;
-        this.executer = executer;
-    }
 
     [HttpGet]
     public Task Get(
         [FromQuery] string query,
         [FromQuery] string? variables,
         [FromQuery] string? operationName,
-        CancellationToken cancellation)
+        Cancel cancel)
     {
         var inputs = variables.ToInputs();
-        return Execute(query, operationName, inputs, cancellation);
+        return Execute(query, operationName, inputs, cancel);
     }
 
     public class GraphQLQuery
@@ -39,16 +31,16 @@ public class GraphQlController :
     [HttpPost]
     public Task Post(
         [FromBody]GraphQLQuery query,
-        CancellationToken cancellation)
+        Cancel cancel)
     {
         var inputs = query.Variables.ToInputs();
-        return Execute(query.Query, query.OperationName, inputs, cancellation);
+        return Execute(query.Query, query.OperationName, inputs, cancel);
     }
 
     async Task Execute(string query,
         string? operationName,
         Inputs? variables,
-        CancellationToken cancellation)
+        Cancel cancel)
     {
         var options = new ExecutionOptions
         {
@@ -56,15 +48,13 @@ public class GraphQlController :
             Query = query,
             OperationName = operationName,
             Variables = variables,
-            CancellationToken = cancellation,
-#if (DEBUG)
+            CancellationToken = cancel,
             ThrowOnUnhandledException = true,
             EnableMetrics = true,
-#endif
         };
         var executeAsync = await executer.ExecuteAsync(options);
 
-        await writer.WriteAsync(Response.Body, executeAsync, cancellation);
+        await writer.WriteAsync(Response.Body, executeAsync, cancel);
     }
 }
 #endregion

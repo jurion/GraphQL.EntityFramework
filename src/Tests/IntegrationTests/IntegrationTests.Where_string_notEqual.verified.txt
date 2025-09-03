@@ -1,0 +1,26 @@
+﻿{
+  target:
+{
+  "data": {
+    "stringEntities": [
+      {
+        "id": "Guid_1",
+        "property": null
+      },
+      {
+        "id": "Guid_2",
+        "property": "Value"
+      }
+    ]
+  }
+},
+  sql: {
+    Text:
+select   s.Id,
+         s.Property
+from     StringEntities as s
+where    s.Property <> N'notValue'
+         or s.Property is null
+order by s.Property
+  }
+}

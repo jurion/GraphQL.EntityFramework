@@ -1,10 +1,15 @@
-<?xml version="1.0" encoding="utf-8"?>
+
 <Project>
   <PropertyGroup>
-    <NoWarn>CS1591;NU5104;CS1573</NoWarn>
-    <Version>21.3.1</Version>
+    <NoWarn>CS1591;NU5104;CS1573;CS9107;NU1608;NU1109</NoWarn>
+    <Version>32.2.0</Version>
+    <LangVersion>preview</LangVersion>
     <AssemblyVersion>1.0.0</AssemblyVersion>
     <PackageTags>EntityFrameworkCore, EntityFramework, GraphQL</PackageTags>
     <ImplicitUsings>true</ImplicitUsings>
+    <ResolveAssemblyReferencesSilent>true</ResolveAssemblyReferencesSilent>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <SuppressNETCoreSdkPreviewMessage>true</SuppressNETCoreSdkPreviewMessage>
   </PropertyGroup>
 </Project>
