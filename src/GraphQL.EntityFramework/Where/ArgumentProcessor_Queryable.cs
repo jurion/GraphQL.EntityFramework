@@ -22,9 +22,11 @@ public static partial class ArgumentProcessor
         }
 
         var customWhereService = context.RequestServices?.GetService<ICustomExpressionBuilder<TItem>>();
+        var tagService = context.RequestServices?.GetService<ITagsProcessor>();
+
         if (ArgumentReader.TryReadWhere(context, out var wheres))
         {
-            var predicate = ExpressionBuilder<TItem>.BuildPredicate(wheres, customWhereService, context);
+            var predicate = ExpressionBuilder<TItem>.BuildPredicate(wheres, customWhereService, context, tagService);
             queryable = queryable.Where(predicate);
         }
 

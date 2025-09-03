@@ -17,7 +17,7 @@ public static partial class ArgumentProcessor
 
         if (ArgumentReader.TryReadWhere(context, out var wheres))
         {
-            var predicate = ExpressionBuilder<TItem>.BuildPredicate(wheres, context.RequestServices?.GetService<ICustomExpressionBuilder<TItem>>(), context);
+            var predicate = ExpressionBuilder<TItem>.BuildPredicate(wheres, context.RequestServices?.GetService<ICustomExpressionBuilder<TItem>>(), context, context.RequestServices?.GetService<ITagsProcessor>());
             items = items.Where(predicate.Compile());
         }
 

@@ -9,16 +9,16 @@ public static class ExpressionBuilder<T>
     /// <summary>
     /// Build a predicate for a supplied list of where's (Grouped or not)
     /// </summary>
-    public static Expression<Func<T, bool>> BuildPredicate(IEnumerable<WhereExpression> wheres, ICustomExpressionBuilder<T>? customExpressionBuilder = null, IResolveFieldContext? context = null)
+    public static Expression<Func<T, bool>> BuildPredicate(IEnumerable<WhereExpression> wheres, ICustomExpressionBuilder<T>? customExpressionBuilder = null, IResolveFieldContext? context = null, ITagsProcessor? tagsProcessor = null)
     {
         var param = PropertyCache<T>.SourceParameter;
-        var expressionBody = MakePredicateBody(wheres, customExpressionBuilder, param, context);
+        var expressionBody = MakePredicateBody(wheres, customExpressionBuilder, param, context, tagsProcessor);
         
 
         return Expression.Lambda<Func<T, bool>>(expressionBody, param);
     }
 
-    static Expression MakePredicateBody(IEnumerable<WhereExpression> wheres, ICustomExpressionBuilder<T>? customExpressionBuilder, ParameterExpression parameterExpression, IResolveFieldContext? resolveFieldContext)
+    static Expression MakePredicateBody(IEnumerable<WhereExpression> wheres, ICustomExpressionBuilder<T>? customExpressionBuilder, ParameterExpression parameterExpression, IResolveFieldContext? resolveFieldContext, ITagsProcessor? tagsProcessor)
     {
         Expression? mainExpression = null;
         var previousWhere = new WhereExpression();
@@ -26,6 +26,7 @@ public static class ExpressionBuilder<T>
         // Iterate over wheres
         foreach (var where in wheres)
         {
+            tagsProcessor?.ProcessTags(where);
             Expression nextExpression;
             Expression? customExpression = null;
             if (customExpressionBuilder != null)
@@ -36,7 +37,7 @@ public static class ExpressionBuilder<T>
                 if (where.GroupedExpressions?.Length > 0)
                 {
                     // Recurse with new set of expression
-                    nextExpression = MakePredicateBody(where.GroupedExpressions, customExpressionBuilder, parameterExpression, resolveFieldContext);
+                    nextExpression = MakePredicateBody(where.GroupedExpressions, customExpressionBuilder, parameterExpression, resolveFieldContext, tagsProcessor);
 
                     // If the whole group is to be negated
                     if (where.Negate)
