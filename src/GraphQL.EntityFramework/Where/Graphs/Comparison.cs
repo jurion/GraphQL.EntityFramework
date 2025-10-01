@@ -1,10 +1,9 @@
-﻿namespace GraphQL.EntityFramework;
+namespace GraphQL.EntityFramework;
 
 public enum Comparison
 {
     // Both
     Equal,
-    NotEqual,
     In,
     NotIn,
 
@@ -18,5 +17,7 @@ public enum Comparison
     StartsWith,
     EndsWith,
     Contains,
-    Like
+    Like,
+
+    NotEqual
 }
