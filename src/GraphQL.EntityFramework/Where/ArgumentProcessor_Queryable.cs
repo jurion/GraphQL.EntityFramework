@@ -75,7 +75,7 @@ public static partial class ArgumentProcessor
 
         foreach (var subsequentOrderBy in orderBys.Skip(1))
         {
-            if (customSorting?.ApplySort(ordered, orderBy, context, false, out ordered) ?? false)
+            if (customSorting?.ApplySort(ordered, subsequentOrderBy, context, false, out ordered) ?? false)
                 continue;
             var subsequentPropertyFunc = PropertyCache<TItem>.GetProperty(subsequentOrderBy.Path).Lambda;
             ordered = subsequentOrderBy.Descending ? ordered.ThenByDescending(subsequentPropertyFunc) : ordered.ThenBy(subsequentPropertyFunc);
