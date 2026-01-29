@@ -41,4 +41,13 @@
             throw new($"Cannot perform {comparison} on a single String.");
         }
     }
+
+    public static void ValidateBetween(Type propertyType, Comparison comparison, string?[]? values)
+    {
+        ValidateObject(propertyType, comparison);
+        if (values == null || values.Length != 2)
+        {
+            throw new($"Between comparison requires exactly 2 values, but {values?.Length ?? 0} were provided.");
+        }
+    }
 }

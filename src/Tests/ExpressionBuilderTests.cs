@@ -576,4 +576,395 @@ public class ExpressionBuilderTests
         public Company? Company { get; set; }
         public DateTime DateOfBirth { get; set; }
     }
+
+    [Fact]
+    public void Between_Int()
+    {
+        var list = new List<Person>
+        {
+            new()
+            {
+                Name = "Person 1",
+                Age = 10
+            },
+            new()
+            {
+                Name = "Person 2",
+                Age = 15
+            },
+            new()
+            {
+                Name = "Person 3",
+                Age = 20
+            }
+        };
+
+        var result = list
+            .AsQueryable()
+            .Where(ExpressionBuilder<Person>.BuildPredicate("Age", Comparison.Between, ["12", "18"]))
+            .Single();
+        Assert.Equal("Person 2", result.Name);
+    }
+
+    [Fact]
+    public void Between_Int_Boundary()
+    {
+        var list = new List<Person>
+        {
+            new()
+            {
+                Name = "Person 1",
+                Age = 10
+            },
+            new()
+            {
+                Name = "Person 2",
+                Age = 12
+            },
+            new()
+            {
+                Name = "Person 3",
+                Age = 18
+            },
+            new()
+            {
+                Name = "Person 4",
+                Age = 20
+            }
+        };
+
+        var result = list
+            .AsQueryable()
+            .Where(ExpressionBuilder<Person>.BuildPredicate("Age", Comparison.Between, ["12", "18"]))
+            .ToList();
+        Assert.Equal(2, result.Count);
+        Assert.Contains(result, p => p.Name == "Person 2");
+        Assert.Contains(result, p => p.Name == "Person 3");
+    }
+
+    [Fact]
+    public void Between_DateTime()
+    {
+        var list = new List<Person>
+        {
+            new()
+            {
+                Name = "Person 1",
+                DateOfBirth = new(2000, 1, 1, 0, 0, 0, DateTimeKind.Utc)
+            },
+            new()
+            {
+                Name = "Person 2",
+                DateOfBirth = new(2005, 6, 15, 0, 0, 0, DateTimeKind.Utc)
+            },
+            new()
+            {
+                Name = "Person 3",
+                DateOfBirth = new(2010, 12, 31, 0, 0, 0, DateTimeKind.Utc)
+            }
+        };
+
+        var result = list
+            .AsQueryable()
+            .Where(ExpressionBuilder<Person>.BuildPredicate("DateOfBirth", Comparison.Between, ["2003-01-01T00:00:00+00:00", "2008-01-01T00:00:00+00:00"]))
+            .Single();
+        Assert.Equal("Person 2", result.Name);
+    }
+
+    [Fact]
+    public void Between_Nullable()
+    {
+        var list = new List<TargetWithNullable>
+        {
+            new()
+            {
+                Field = null
+            },
+            new()
+            {
+                Field = 5
+            },
+            new()
+            {
+                Field = 15
+            },
+            new()
+            {
+                Field = 25
+            }
+        };
+
+        var result = list
+            .AsQueryable()
+            .Where(ExpressionBuilder<TargetWithNullable>.BuildPredicate("Field", Comparison.Between, ["10", "20"]))
+            .Single();
+        Assert.Equal(15, result.Field);
+    }
+
+    [Fact]
+    public void Between_InList()
+    {
+        var companies = new List<Company>
+        {
+            new()
+            {
+                Name = "Company 1",
+                Employees =
+                [
+                    new()
+                    {
+                        Name = "Person 1",
+                        Age = 10
+                    },
+                    new()
+                    {
+                        Name = "Person 2",
+                        Age = 15
+                    }
+                ]
+            },
+            new()
+            {
+                Name = "Company 2",
+                Employees =
+                [
+                    new()
+                    {
+                        Name = "Person 3",
+                        Age = 20
+                    }
+                ]
+            }
+        };
+
+        foreach (var company in companies)
+        {
+            foreach (var employee in company.Employees)
+            {
+                employee.Company = company;
+            }
+        }
+
+        var result = companies
+            .AsQueryable()
+            .Where(ExpressionBuilder<Company>.BuildPredicate("Employees[Age]", Comparison.Between, ["12", "18"]))
+            .Single();
+        Assert.Equal("Company 1", result.Name);
+    }
+
+    [Fact]
+    public void Between_Invalid_TooFewValues()
+    {
+        var list = new List<Person>
+        {
+            new()
+            {
+                Name = "Person 1",
+                Age = 15
+            }
+        };
+
+        Assert.Throws<Exception>(() =>
+            list
+                .AsQueryable()
+                .Where(ExpressionBuilder<Person>.BuildPredicate("Age", Comparison.Between, ["12"]))
+                .ToList());
+    }
+
+    [Fact]
+    public void Between_Invalid_TooManyValues()
+    {
+        var list = new List<Person>
+        {
+            new()
+            {
+                Name = "Person 1",
+                Age = 15
+            }
+        };
+
+        Assert.Throws<Exception>(() =>
+            list
+                .AsQueryable()
+                .Where(ExpressionBuilder<Person>.BuildPredicate("Age", Comparison.Between, ["12", "18", "20"]))
+                .ToList());
+    }
+
+    [Fact]
+    public void Between_Invalid_String()
+    {
+        var list = new List<Target>
+        {
+            new()
+            {
+                Member = "test"
+            }
+        };
+
+        Assert.Throws<Exception>(() =>
+            list
+                .AsQueryable()
+                .Where(ExpressionBuilder<Target>.BuildPredicate("Member", Comparison.Between, ["a", "z"]))
+                .ToList());
+    }
+
+    [Fact]
+    public void Between_SameValues()
+    {
+        var list = new List<Person>
+        {
+            new()
+            {
+                Name = "Person 1",
+                Age = 10
+            },
+            new()
+            {
+                Name = "Person 2",
+                Age = 15
+            },
+            new()
+            {
+                Name = "Person 3",
+                Age = 20
+            }
+        };
+
+        var result = list
+            .AsQueryable()
+            .Where(ExpressionBuilder<Person>.BuildPredicate("Age", Comparison.Between, ["15", "15"]))
+            .Single();
+        Assert.Equal("Person 2", result.Name);
+    }
+
+    [Fact]
+    public void Between_SameValues_DateTime()
+    {
+        var list = new List<Person>
+        {
+            new()
+            {
+                Name = "Person 1",
+                DateOfBirth = new(2000, 1, 1, 0, 0, 0, DateTimeKind.Utc)
+            },
+            new()
+            {
+                Name = "Person 2",
+                DateOfBirth = new(2005, 6, 15, 0, 0, 0, DateTimeKind.Utc)
+            },
+            new()
+            {
+                Name = "Person 3",
+                DateOfBirth = new(2010, 12, 31, 0, 0, 0, DateTimeKind.Utc)
+            }
+        };
+
+        var result = list
+            .AsQueryable()
+            .Where(ExpressionBuilder<Person>.BuildPredicate("DateOfBirth", Comparison.Between, ["2005-06-15T00:00:00+00:00", "2005-06-15T00:00:00+00:00"]))
+            .Single();
+        Assert.Equal("Person 2", result.Name);
+    }
+
+    [Fact]
+    public void Between_SameValues_InList()
+    {
+        var companies = new List<Company>
+        {
+            new()
+            {
+                Name = "Company 1",
+                Employees =
+                [
+                    new()
+                    {
+                        Name = "Person 1",
+                        Age = 10
+                    },
+                    new()
+                    {
+                        Name = "Person 2",
+                        Age = 15
+                    }
+                ]
+            },
+            new()
+            {
+                Name = "Company 2",
+                Employees =
+                [
+                    new()
+                    {
+                        Name = "Person 3",
+                        Age = 20
+                    }
+                ]
+            }
+        };
+
+        foreach (var company in companies)
+        {
+            foreach (var employee in company.Employees)
+            {
+                employee.Company = company;
+            }
+        }
+
+        var result = companies
+            .AsQueryable()
+            .Where(ExpressionBuilder<Company>.BuildPredicate("Employees[Age]", Comparison.Between, ["15", "15"]))
+            .Single();
+        Assert.Equal("Company 1", result.Name);
+    }
+
+    [Fact]
+    public void Between_SameValues_DateTime_InList()
+    {
+        var companies = new List<Company>
+        {
+            new()
+            {
+                Name = "Company 1",
+                Employees =
+                [
+                    new()
+                    {
+                        Name = "Person 1",
+                        DateOfBirth = new(2000, 1, 1, 0, 0, 0, DateTimeKind.Utc)
+                    },
+                    new()
+                    {
+                        Name = "Person 2",
+                        DateOfBirth = new(2005, 6, 15, 0, 0, 0, DateTimeKind.Utc)
+                    }
+                ]
+            },
+            new()
+            {
+                Name = "Company 2",
+                Employees =
+                [
+                    new()
+                    {
+                        Name = "Person 3",
+                        DateOfBirth = new(2010, 12, 31, 0, 0, 0, DateTimeKind.Utc)
+                    }
+                ]
+            }
+        };
+
+        foreach (var company in companies)
+        {
+            foreach (var employee in company.Employees)
+            {
+                employee.Company = company;
+            }
+        }
+
+        var result = companies
+            .AsQueryable()
+            .Where(ExpressionBuilder<Company>.BuildPredicate("Employees[DateOfBirth]", Comparison.Between, ["2005-06-15T00:00:00+00:00", "2005-06-15T00:00:00+00:00"]))
+            .Single();
+        Assert.Equal("Company 1", result.Name);
+    }
 }

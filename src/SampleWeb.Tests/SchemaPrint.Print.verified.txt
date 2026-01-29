@@ -88,6 +88,7 @@ enum Comparison {
   lessThanOrEqual
   like
   startsWith
+  between
 }
 
 enum Connector {

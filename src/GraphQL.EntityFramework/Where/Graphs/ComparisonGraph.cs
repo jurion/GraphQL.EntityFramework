@@ -16,5 +16,6 @@
         Add("lessThanOrEqual", Comparison.LessThanOrEqual);
         Add("like", Comparison.Like);
         Add("startsWith", Comparison.StartsWith);
+        Add("between", Comparison.Between);
     }
 }

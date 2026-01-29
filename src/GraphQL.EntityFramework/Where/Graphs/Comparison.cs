@@ -19,5 +19,6 @@ public enum Comparison
     Contains,
     Like,
 
-    NotEqual
+    NotEqual,
+    Between
 }

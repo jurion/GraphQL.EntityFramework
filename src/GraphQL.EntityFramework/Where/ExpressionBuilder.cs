@@ -113,7 +113,7 @@ public static partial class ExpressionBuilder<T>
         }
         catch (Exception exception)
         {
-            throw new($"Failed to build expression. Path: {path}, Comparison: {comparison}, Negate: {negate}, ", exception);
+            throw new($"Failed to build expression. Path: {path}, Comparison: {comparison}, Negate: {negate}. Inner exception: {exception.Message}", exception);
         }
     }
 
@@ -159,22 +159,43 @@ public static partial class ExpressionBuilder<T>
         var buildPredicate = genericType
             .GetMethods(BindingFlags.Public | BindingFlags.Static)
             .SingleOrDefault(_ => _.Name == "BuildPredicate" &&
-                                  _.GetParameters().Length == 4
-                                  && _.GetParameters().All(x => x.ParameterType != typeof(ITagsProcessor)));
+                                  _.GetParameters().Length == 4 &&
+                                  _.GetParameters()[0].ParameterType == typeof(string) &&
+                                  _.GetParameters()[1].ParameterType == typeof(Comparison) &&
+                                  _.GetParameters()[2].ParameterType.IsArray &&
+                                  _.GetParameters()[2].ParameterType.GetElementType() == typeof(string) &&
+                                  _.GetParameters()[3].ParameterType == typeof(bool));
         if (buildPredicate == null)
         {
             throw new($"Could not find BuildPredicate method on {genericType.FullName}");
         }
 
-        var subPredicate = (Expression)buildPredicate
-            .Invoke(
-                new(),
-                [
-                    listPath,
-                    comparison,
-                    values!,
-                    false
-                ])!;
+        Expression subPredicate;
+        try
+        {
+            // Ensure values array is properly passed - create a new array to avoid any potential issues
+            var valuesArray = values ?? throw new($"Values cannot be null for Between comparison on list path {path}");
+            if (valuesArray.Length != 2 && comparison == Comparison.Between)
+            {
+                throw new($"Between comparison requires exactly 2 values, but {valuesArray.Length} were provided for list path {path}.");
+            }
+            
+            subPredicate = (Expression)buildPredicate
+                .Invoke(
+                    new(),
+                    new object[]
+                    {
+                        listPath,
+                        comparison,
+                        valuesArray,
+                        false
+                    })!;
+        }
+        catch (System.Reflection.TargetInvocationException ex) when (ex.InnerException != null)
+        {
+            // Unwrap TargetInvocationException to get the actual exception
+            throw new($"Failed to build expression for list item. Path: {listPath}, Comparison: {comparison}, ListItemType: {listItemType.FullName}, ValuesCount: {values?.Length ?? 0}. {ex.InnerException.Message}", ex.InnerException);
+        }
 
         // Generate a method info for the Any Enumerable Static Method
         var anyInfo = typeof(Enumerable)
@@ -224,6 +245,10 @@ public static partial class ExpressionBuilder<T>
                 case Comparison.In:
                     WhereValidator.ValidateObject(property.PropertyType, comparison);
                     expression = MakeObjectListInComparision(values!, property);
+                    break;
+                case Comparison.Between:
+                    WhereValidator.ValidateBetween(property.PropertyType, comparison, values);
+                    expression = MakeBetweenComparison(values!, property);
                     break;
 
                 default:
@@ -304,6 +329,44 @@ public static partial class ExpressionBuilder<T>
             Comparison.LessThanOrEqual => Expression.MakeBinary(ExpressionType.LessThanOrEqual, left, constant),
             _ => throw new($"Invalid comparison operator '{comparison}'.")
         };
+    }
+
+    static Expression MakeBetweenComparison(string[] values, Property<T> property)
+    {
+        if (values.Length != 2)
+        {
+            throw new($"Between comparison requires exactly 2 values, but {values.Length} were provided.");
+        }
+
+        var left = property.Left;
+        var minValue = TypeConverter.ConvertStringToType(values[0], property.PropertyType);
+        var maxValue = TypeConverter.ConvertStringToType(values[1], property.PropertyType);
+
+        // If min and max are equal, use equality comparison instead of range
+        if (AreValuesEqual(minValue, maxValue))
+        {
+            var constant = Expression.Constant(minValue, left.Type);
+            return Expression.MakeBinary(ExpressionType.Equal, left, constant);
+        }
+
+        var minConstant = Expression.Constant(minValue, left.Type);
+        var maxConstant = Expression.Constant(maxValue, left.Type);
+
+        var greaterThanOrEqual = Expression.MakeBinary(ExpressionType.GreaterThanOrEqual, left, minConstant);
+        var lessThanOrEqual = Expression.MakeBinary(ExpressionType.LessThanOrEqual, left, maxConstant);
+
+        return Expression.AndAlso(greaterThanOrEqual, lessThanOrEqual);
+    }
+
+    static bool AreValuesEqual(object? minValue, object? maxValue)
+    {
+        if (ReferenceEquals(minValue, maxValue))
+            return true;
+        if (minValue == null || maxValue == null)
+            return false;
+
+        // Use Equals which handles value types correctly (including boxing/unboxing)
+        return Equals(minValue, maxValue);
     }
 
     static bool HasListPropertyInPath(string path) =>
